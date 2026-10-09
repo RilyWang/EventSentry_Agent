@@ -10,7 +10,7 @@
 | # | 资源 | 地址 |
 |---|------|------|
 | 1 | **源代码仓库** | https://github.com/RilyWang/EventSentry_Agent |
-| 2 | **Web 产品 URL** | https://watson-wanting-dream-examinations.trycloudflare.com |
+| 2 | **Web 产品 URL** | https://cadillac-mtv-mat-downloaded.trycloudflare.com |
 | 3 | 线上验证 | 首页/样式/脚本/全部 API 均 HTTP 200，与本地数据一致 |
 
 ⚠️ 线上地址为 Cloudflare 无账号快速隧道，**cloudflared 进程停止即失效**。提交前请确认可访问；若失效联系我重开。
