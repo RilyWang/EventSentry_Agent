@@ -92,35 +92,78 @@ def current_tunnel_url():
         return None
 
 
-def tunnel_healthy() -> bool:
+def tunnel_healthy(retries: int = 2) -> bool:
+    """探活隧道（重试若干次，避免边缘抖动导致误判而触发重启）"""
     if not tunnel_process_running():
         return False
     url = current_tunnel_url()
     if not url:
         return False
+    for i in range(retries):
+        try:
+            r = requests.get(f"{url}/api/ping", timeout=15, proxies=PROXIES)
+            if r.status_code == 200:
+                return True
+        except Exception:
+            pass
+        if i < retries - 1:
+            time.sleep(5)
+    return False
+
+
+def kill_cloudflared():
+    """重启前先杀掉已有 cloudflared，避免多进程抢地址"""
     try:
-        r = requests.get(f"{url}/api/ping", timeout=12, proxies=PROXIES)
-        return r.status_code == 200
+        subprocess.run(["taskkill", "/F", "/IM", "cloudflared.exe"],
+                       capture_output=True, timeout=20)
     except Exception:
-        return False
+        pass
+    time.sleep(4)
+
+
+_last_tunnel_restart = 0.0
+TUNNEL_RESTART_COOLDOWN = int(os.getenv("TUNNEL_RESTART_COOLDOWN", "300"))  # 默认 5 分钟
 
 
 def start_tunnel():
-    log("隧道不可用 → 重启中（http2 协议，规避 QUIC 受限）…")
+    """
+    重启隧道。
+    注意：Cloudflare 对快速隧道创建有频率限制，过于频繁会卡在
+    "Requesting new quick Tunnel..." 而建不起来 —— 故加冷却时间。
+    """
+    global _last_tunnel_restart
+    now = time.time()
+    if now - _last_tunnel_restart < TUNNEL_RESTART_COOLDOWN:
+        left = int(TUNNEL_RESTART_COOLDOWN - (now - _last_tunnel_restart))
+        log(f"距上次重启不足 {TUNNEL_RESTART_COOLDOWN}s，冷却中（还需 {left}s），本轮跳过")
+        return None
+    _last_tunnel_restart = now
+
+    log("隧道不可用 → 重启中（先清理旧进程，再以 http2 协议启动）…")
+    kill_cloudflared()
+
     logfile = open(TUNNEL_LOG, "w", encoding="utf-8")
     subprocess.Popen(
         [CLOUDFLARED, "tunnel", "--url", SERVER_URL,
          "--protocol", "http2", "--no-autoupdate"],
         stdout=logfile, stderr=logfile,
         creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
-    # 等待地址生成
-    for _ in range(20):
+
+    # 等待地址生成（最长 120s）
+    for _ in range(40):
         time.sleep(3)
         url = current_tunnel_url()
-        if url:
+        if url and "Registered tunnel connection" in _read_log():
             save_url(url)
             return url
     return None
+
+
+def _read_log():
+    try:
+        return open(TUNNEL_LOG, encoding="utf-8", errors="ignore").read()
+    except Exception:
+        return ""
 
 
 def save_url(url):
@@ -168,7 +211,8 @@ def main():
                     fail_tunnel = 0
                 else:
                     fail_tunnel += 1
-                    if fail_tunnel >= 2:
+                    # 阈值放宽到 3 次（约 90s 连续不可用才重启），避免误判抖动
+                    if fail_tunnel >= 3:
                         new_url = start_tunnel()
                         if new_url:
                             log(f"⚠️ 公网地址已变更 → {new_url}")
