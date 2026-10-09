@@ -586,11 +586,34 @@ body {
 }
 .citation-date { font-size: 10px; color: var(--text-3); margin-top: 3px; }
 
-/* ─────────── 通知中心条目 ─────────── */
+/* ─────────── 通知中心 ─────────── */
+.notif-readall {
+  background: var(--primary-light); color: var(--primary);
+  border: none; border-radius: 14px;
+  padding: 6px 14px; font-size: 12.5px; font-weight: 600;
+  cursor: pointer; transition: opacity .18s, transform .12s;
+}
+.notif-readall:active { transform: scale(0.95); }
+.notif-readall:disabled { opacity: .55; }
+
 .notif-item {
   background: var(--card); border-radius: 10px; padding: 13px;
   margin-bottom: 9px; border: 1px solid var(--border);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-sm); cursor: pointer;
+  transition: background .15s;
 }
+.notif-item:active { background: var(--bg); }
 .notif-item.unread { border-left: 3px solid var(--primary); }
-.notif-item.read { opacity: .62; }
+.notif-item.read { opacity: .6; }
+
+/* 未读圆点 + 标签 */
+.notif-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--primary); flex-shrink: 0;
+}
+.notif-unread-tag {
+  font-size: 10px; color: var(--primary);
+  background: var(--primary-light);
+  padding: 0 5px; border-radius: 3px; line-height: 1.6;
+  margin-left: auto;
+}

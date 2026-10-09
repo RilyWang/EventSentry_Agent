@@ -200,14 +200,20 @@ class AnalystAgent:
         assignments = self._assign_events(ticker_name, analyzed, existing)
 
         # ── 3. 按事件归组 ──
+        # 合法 event_id 集合 —— LLM 可能返回非法值（如行号 "276"），必须校验后再用
+        valid_ids = {e["event_id"] for e in existing}
         groups = {}   # event_id -> list of analyzed msg
         for a in analyzed:
             asg = next((x for x in assignments if x.get("id") == a["id"]), None)
             if not asg:
                 continue
-            if asg.get("assign") == "existing" and asg.get("event_id"):
-                groups.setdefault(asg["event_id"], []).append(a)
+            claimed = asg.get("event_id")
+            if asg.get("assign") == "existing" and claimed in valid_ids:
+                groups.setdefault(claimed, []).append(a)
             else:
+                # LLM 返回的 event_id 非法（或本就要求新建）→ 按规范主题新建事件
+                if asg.get("assign") == "existing" and claimed not in valid_ids:
+                    print(f"[Analyst] 忽略非法 event_id={claimed!r}（{ticker_name}），改为新建事件")
                 theme = asg.get("theme") or a.get("theme") or "公司动态"
                 eid = self._make_event_id(ticker, theme)
                 a["_new_theme"] = theme
@@ -449,10 +455,30 @@ class AnalystAgent:
 
     # ═══ 通知 ═══
     def _notify(self, cur, eid, tr):
+        """
+        只推送给「真正关心该事件」的用户：
+          ① 订阅了该事件的用户
+          ② 持仓 / 关注了该事件所属标的的用户
+        不再对无人订阅的事件默认推给用户 1 —— 那会产生大量无关通知。
+        """
+        cur.execute("SELECT ticker FROM events WHERE event_id = ?", (eid,))
+        row = cur.fetchone()
+        ticker = row[0] if row else None
+
+        # ① 事件订阅者
         cur.execute("SELECT user_id FROM event_subscriptions WHERE event_id = ?", (eid,))
-        subs = [r[0] for r in cur.fetchall()]
+        targets = {r[0] for r in cur.fetchall()}
+
+        # ② 持仓 / 关注该标的的用户
+        if ticker:
+            cur.execute("SELECT user_id FROM holdings WHERE ticker = ?", (ticker,))
+            targets |= {r[0] for r in cur.fetchall()}
+            cur.execute("SELECT user_id FROM ticker_subscriptions WHERE ticker = ?", (ticker,))
+            targets |= {r[0] for r in cur.fetchall()}
+
+        subs = sorted(targets)
         if not subs:
-            subs = [1]  # 开发模式默认用户
+            return   # 无人关心该事件 → 不产生通知
         for uid in subs:
             cur.execute("""
                 INSERT INTO notifications (user_id, event_id, type, title, content)

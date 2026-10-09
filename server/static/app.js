@@ -888,18 +888,21 @@ const app = {
         <div class="modal-header">
           <button class="back-btn" onclick="app.closeNotifications()">←</button>
           <h3>通知中心</h3>
-          <button class="text-btn" onclick="app.markAllNotifRead()">全部已读</button>
+          <button class="notif-readall" onclick="app.markAllNotifRead()">全部已读</button>
         </div>
         <div class="modal-body" id="notif-list">
           ${this.notifications.length ? this.notifications.map(n => `
-            <div class="notif-item ${n.read ? 'read' : 'unread'}" onclick="app.markNotifRead(${n.id})">
+            <div class="notif-item ${n.read ? 'read' : 'unread'}" data-id="${n.id}" onclick="app.markNotifRead(${n.id})">
               <div style="display:flex;gap:8px;align-items:center;margin-bottom:5px">
+                ${n.read ? '' : '<span class="notif-dot"></span>'}
                 <span class="badge ${n.type === 'denial' ? 'badge-green' : n.type === 'expiry' ? 'badge-gray' : 'badge-blue'}">${typeLabel[n.type] || n.type}</span>
-                <span style="font-size:11px;color:var(--text-3)">${(n.created_at || '').slice(0, 10)}</span>
+                <span style="font-size:11px;color:var(--text-3)">${(n.created_at || '').slice(0, 16)}</span>
+                ${n.read ? '' : '<span class="notif-unread-tag">未读</span>'}
               </div>
               <div style="font-size:13.5px;font-weight:600;color:var(--text)">${n.title}</div>
               <div style="font-size:12px;color:var(--text-2);margin-top:3px">${n.content}</div>
-            </div>`).join('') : '<div class="empty-state">暂无通知</div>'}
+              <div style="font-size:11px;color:var(--text-3);margin-top:5px">关联事件：${n.event_id}</div>
+            </div>`).join('') : '<div class="empty-state">暂无通知<br><span style="font-size:11px">订阅事件或在「我的」添加持仓后，状态跃迁会通知你</span></div>'}
         </div>
       </div>`;
   },
@@ -907,8 +910,28 @@ const app = {
   closeNotifications() { document.getElementById('notif-modal')?.classList.remove('active'); },
 
   async markAllNotifRead() {
-    try { await this.api('/api/notifications/read-all', { method: 'POST' }); await this.loadNotifications(); this.showNotifications(); }
-    catch (e) { console.error(e); }
+    const btn = document.querySelector('.notif-readall');
+    if (btn) { btn.disabled = true; btn.textContent = '处理中…'; }
+    try {
+      await this.api('/api/notifications/read-all', { method: 'POST' });
+      await this.loadNotifications();     // 刷新铃铛徽标（清零）
+      this.showNotifications();           // 重渲染列表（全部转为已读态）
+      this.toast('✓ 已全部标为已读', 'success', 1800);
+    } catch (e) {
+      this.toast('操作失败：' + e.message, 'error');
+      if (btn) { btn.disabled = false; btn.textContent = '全部已读'; }
+    }
+  },
+
+  // 单条已读
+  async markNotifRead(id) {
+    const item = document.querySelector(`.notif-item[data-id="${id}"]`);
+    if (item && item.classList.contains('read')) return;   // 已读则不重复请求
+    try {
+      await this.api(`/api/notifications/${id}/read`, { method: 'POST' });
+      await this.loadNotifications();
+      if (item) { item.classList.remove('unread'); item.classList.add('read'); }
+    } catch (e) { console.error(e); }
   },
 
   // ─── Agent 运行状态 ───

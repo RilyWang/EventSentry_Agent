@@ -483,12 +483,31 @@ def update_preferences(body: dict):
 
 @app.get("/api/notifications")
 def get_notifications(unread_only: bool = False):
+    """
+    通知中心 —— 只返回与用户**订阅事件**或**关注/持仓标的**相关的通知。
+    与用户无关的推送不展示（避免噪音）。
+    """
     conn = get_db()
     cursor = conn.cursor()
-    sql = "SELECT * FROM notifications WHERE user_id = 1"
+    sql = """
+        SELECT n.* FROM notifications n
+        WHERE n.user_id = 1
+          AND (
+            EXISTS (SELECT 1 FROM event_subscriptions s
+                    WHERE s.user_id = 1 AND s.event_id = n.event_id)
+            OR EXISTS (SELECT 1 FROM events e
+                       WHERE e.event_id = n.event_id
+                         AND (
+                           EXISTS (SELECT 1 FROM ticker_subscriptions t
+                                   WHERE t.user_id = 1 AND t.ticker = e.ticker)
+                           OR EXISTS (SELECT 1 FROM holdings h
+                                      WHERE h.user_id = 1 AND h.ticker = e.ticker)
+                         ))
+          )
+    """
     if unread_only:
-        sql += " AND read = 0"
-    sql += " ORDER BY created_at DESC"
+        sql += " AND n.read = 0"
+    sql += " ORDER BY n.created_at DESC"
     cursor.execute(sql)
     rows = cursor.fetchall()
     conn.close()
