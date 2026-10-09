@@ -1,0 +1,29 @@
+# Render 部署蓝图 —— 免费套餐可用，无需域名，无需信用卡
+# 使用：Render 控制台 → New → Blueprint → 选择本仓库 → Apply
+# 得到固定地址：https://eventsentry.onrender.com
+services:
+  - type: web
+    name: eventsentry
+    runtime: docker
+    dockerfilePath: ./server/Dockerfile
+    dockerContext: ./server
+    plan: free
+    region: singapore          # 就近区域（香港/新加坡）
+    healthCheckPath: /api/ping
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: "3000"
+      - key: ENABLE_SCHEDULER
+        value: "0"             # 免费实例会休眠，关掉定时任务更省资源
+      - key: SCHEDULER_RUN_ON_START
+        value: "0"
+      # 以下密钥请在 Render 控制台的 Environment 里填写（不要提交到仓库）
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_BASE_URL
+        value: "https://open.bigmodel.cn/api/anthropic"
+      - key: LLM_MODEL
+        value: "glm-4.6"
+      - key: SERPER_API_KEY
+        sync: false

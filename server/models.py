@@ -22,8 +22,34 @@ def _ensure_column(cur, table, column, decl):
         cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
 
+def _bootstrap_db_from_bundle():
+    """
+    若目标数据库不存在，但仓库内自带一份数据（db_data/eventsentry.db），
+    则先复制过去 —— 这样在**无持久磁盘**的免费平台上也能开箱带数据。
+    """
+    import shutil
+    bundled = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "db_data", "eventsentry.db")
+    target = DB_PATH
+    if os.path.abspath(bundled) == os.path.abspath(target):
+        return
+    if os.path.exists(target) or not os.path.exists(bundled):
+        return
+    try:
+        d = os.path.dirname(target)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        shutil.copy2(bundled, target)
+        print(f"[DB] 已从内置数据初始化: {bundled} -> {target}")
+    except Exception as e:
+        print(f"[DB] 内置数据复制失败（将建空库）: {e}")
+
+
 def init_db():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    _bootstrap_db_from_bundle()
+    _dir = os.path.dirname(DB_PATH)
+    if _dir:
+        os.makedirs(_dir, exist_ok=True)
     conn = get_db()
     cursor = conn.cursor()
 

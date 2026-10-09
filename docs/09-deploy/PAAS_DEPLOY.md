@@ -20,7 +20,45 @@
 
 ---
 
-## 一、Fly.io（推荐，有免费额度）
+## 零、账号注册（必读）
+
+### 方案一：Render（推荐，免费、**不需要信用卡**）
+
+1. 打开 https://render.com
+2. 点右上角 **Get Started** → 选 **GitHub** 登录（授权后会读你的仓库）
+3. 登录后在控制台点 **New +** → **Blueprint**
+4. 选择仓库 **EventSentry_Agent** → Render 会自动识别根目录的 `render.yaml` → 点 **Apply**
+5. 部署时在 **Environment** 里补两个密钥（见下方「环境变量清单」）
+6. 等待 3-5 分钟 → 得到固定地址 `https://eventsentry.onrender.com`
+
+> ⚠️ Render 免费实例**闲置 15 分钟会休眠**，再次访问需等 30-60 秒冷启动。
+> 免费套餐**没有持久磁盘**，但本项目已支持「从仓库内置数据库自动初始化」，
+> 所以部署后**开箱就有 121 个真实事件**。
+
+### 方案二：Fly.io（需绑定信用卡验证，有免费额度）
+
+1. 打开 https://fly.io
+2. 点 **Sign Up** → 选 **GitHub** 登录
+3. 按提示**绑定信用卡**（仅身份验证，免费额度内不扣费；不绑卡无法开通）
+4. 安装 flyctl（本项目已下载到 `D:\Zcode	oolslylyctl.exe`）
+5. 本地执行一键部署脚本：
+   ```powershell
+   cd D:/Zcode/Agent_投资事件追踪
+   powershell -ExecutionPolicy Bypass -File deploy_fly.ps1
+   ```
+6. 脚本会引导你输入密钥并完成创建应用 → 建卷 → 部署 → 健康检查
+7. 得到固定地址 `https://eventsentry.fly.dev`
+
+### 方案三：Railway
+
+1. 打开 https://railway.app → **Login with GitHub**
+2. **New Project → Deploy from GitHub repo** → 选 **EventSentry_Agent**
+3. Railway 自动读取根目录 `railway.json`（Dockerfile 构建）
+4. **Variables** 里填密钥 → **Settings → Networking → Generate Domain**
+
+---
+
+## 一、Fly.io 部署细节
 
 ### 前提
 - 注册 https://fly.io （可用 GitHub 登录）
