@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>EventSentry 事件参谋</title>
+  <link rel="stylesheet" href="/style.css?v=20261009b">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="app-header">
+      <h1 id="page-title">发现</h1>
+      <button id="notif-btn" class="icon-btn" onclick="app.showNotifications()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+        <span class="badge" id="notif-badge" style="display:none">0</span>
+      </button>
+    </header>
+
+    <!-- Main Content -->
+    <main id="main-content">
+      <!-- Discover Tab -->
+      <div id="tab-discover" class="tab-page active">
+        <div class="search-box">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" id="discover-search" placeholder="搜索股票、事件主题...">
+        </div>
+        <div class="filter-bar" id="discover-filters">
+          <button class="filter-btn active" data-filter="">全部</button>
+          <button class="filter-btn" data-filter="positive">利好</button>
+          <button class="filter-btn" data-filter="negative">利空</button>
+          <button class="filter-btn" data-filter="risk">风险</button>
+          <button class="filter-btn" id="feed-refresh" style="margin-left:auto;background:var(--primary-light);color:var(--primary)">↻ 刷新</button>
+        </div>
+        <div class="filter-bar" id="status-filters" style="padding-top:0">
+          <button class="filter-btn status-btn active" data-status="">全部状态</button>
+          <button class="filter-btn status-btn" data-status="官方确认">官方确认 <b class="cnt" data-cnt="官方确认"></b></button>
+          <button class="filter-btn status-btn" data-status="媒体验证">媒体验证 <b class="cnt" data-cnt="媒体验证"></b></button>
+          <button class="filter-btn status-btn" data-status="未证实传闻">未证实传闻 <b class="cnt" data-cnt="未证实传闻"></b></button>
+          <button class="filter-btn status-btn" data-status="官方否认">官方否认 <b class="cnt" data-cnt="官方否认"></b></button>
+          <button class="filter-btn status-btn" data-status="实质落地">实质落地 <b class="cnt" data-cnt="实质落地"></b></button>
+          <button class="filter-btn status-btn" data-status="已过期">已过期 <b class="cnt" data-cnt="已过期"></b></button>
+        </div>
+        <div class="event-list" id="discover-list">
+          <div class="loading">加载中...</div>
+        </div>
+        <div id="feed-footer" style="padding:0 16px 20px;text-align:center">
+          <div id="feed-count" style="font-size:11px;color:var(--text-3);margin-bottom:10px"></div>
+          <div id="feed-loading" style="display:none;font-size:12px;color:var(--text-3);padding:8px">正在加载更多…</div>
+          <div id="feed-end" style="display:none;padding:6px 0 4px">
+            <div style="font-size:12px;color:var(--text-3);margin-bottom:10px">— 已加载全部 —</div>
+            <button id="fetch-new" class="btn-primary" style="background:var(--primary-light);color:var(--primary)">获取新事件</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Advisor Tab -->
+      <div id="tab-advisor" class="tab-page">
+        <div class="chat-container" id="chat-container">
+          <div class="chat-welcome">
+            <div class="bot-avatar">参谋</div>
+            <div class="welcome-text">
+              你好！我是事件参谋，可以帮你追踪和分析股票相关的重要事件。
+              <br><br>
+              你可以这样问我：<br>
+              • "宁德时代最近有什么大事？"<br>
+              • "比亚迪销量怎么样？"<br>
+              • "中芯国际扩产进度如何？"
+            </div>
+          </div>
+          <div id="chat-messages"></div>
+        </div>
+        <div class="chat-input-bar">
+          <input type="text" id="chat-input" placeholder="输入股票名称或事件主题...">
+          <button id="chat-send">发送</button>
+        </div>
+      </div>
+
+      <!-- Profile Tab -->
+      <div id="tab-profile" class="tab-page">
+        <div class="profile-header">
+          <div class="avatar">用</div>
+          <div class="profile-info">
+            <h3>测试用户</h3>
+            <span class="profile-tag" id="risk-level-display">稳健型</span>
+            <span class="profile-tag" id="holding-count">持仓 0</span>
+          </div>
+        </div>
+        <div class="profile-menu">
+          <div class="menu-item"><span>关注事件</span><span>0</span></div>
+          <div class="menu-item"><span>关注股票</span><span>0</span></div>
+          <div class="menu-item"><span>消息通知</span><span class="text-gray">已开启</span></div>
+          <div class="menu-item" onclick="app.showSettings()" style="cursor:pointer"><span>风险偏好</span><span class="text-gray" id="risk-level-display">稳健型</span></div>
+        </div>
+        <div class="profile-section">
+          <div class="section-header">
+            <h4>Agent 运行状态</h4>
+            <button class="text-btn" onclick="app.loadAgentStatus()">刷新</button>
+          </div>
+          <div id="agent-status" class="agent-status">
+            <div class="empty-state" style="padding:16px">加载中...</div>
+          </div>
+        </div>
+
+        <div class="profile-section">
+          <div class="section-header">
+            <h4>我的持仓</h4>
+            <button class="text-btn" onclick="app.showAddHolding()">+ 添加</button>
+          </div>
+          <div id="holding-list" class="holding-list">
+            <div class="empty-state">暂无持仓</div>
+          </div>
+        </div>
+        <div class="disclaimer">
+          本应用仅用于信息整理与展示，不构成任何投资建议。<br>
+          投资有风险，入市需谨慎。
+        </div>
+      </div>
+    </main>
+
+    <!-- Bottom Nav -->
+    <nav class="bottom-nav">
+      <button class="nav-item" data-tab="discover">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48 2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48 2.83-2.83"/></svg>
+        <span>发现</span>
+      </button>
+      <button class="nav-item active" data-tab="advisor">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span>参谋</span>
+      </button>
+      <button class="nav-item" data-tab="profile">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span>我的</span>
+      </button>
+    </nav>
+
+    <!-- Event Detail Modal -->
+    <div id="event-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <button class="back-btn" onclick="app.closeModal()">←</button>
+          <h3>事件详情</h3>
+          <button class="bookmark-btn" onclick="app.toggleBookmark()">☆</button>
+        </div>
+        <div class="modal-body" id="modal-body">
+          <!-- 动态填充 -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Add Holding Modal -->
+    <div id="holding-modal" class="modal">
+      <div class="modal-content small">
+        <div class="modal-header">
+          <button class="back-btn" onclick="app.closeHoldingModal()">←</button>
+          <h3>添加持仓</h3>
+          <div></div>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>股票代码</label>
+            <input type="text" id="holding-ticker" placeholder="如: 300750.SZ">
+          </div>
+          <div class="form-group">
+            <label>股票名称</label>
+            <input type="text" id="holding-name" placeholder="如: 宁德时代">
+          </div>
+          <button class="btn-primary" onclick="app.addHolding()">添加</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal">
+      <div class="modal-content small">
+        <div class="modal-header">
+          <button class="back-btn" onclick="app.closeSettingsModal()">←</button>
+          <h3>风险偏好设置</h3>
+          <div></div>
+        </div>
+        <div class="modal-body">
+          <button class="btn-primary" style="margin-bottom:8px;background:#f3f4f6;color:#1f2937" onclick="app.updateRiskLevel('conservative')">保守型 — 偏好低风险事件</button>
+          <button class="btn-primary" style="margin-bottom:8px;background:#f3f4f6;color:#1f2937" onclick="app.updateRiskLevel('moderate')">稳健型 — 平衡风险与收益</button>
+          <button class="btn-primary" style="background:#f3f4f6;color:#1f2937" onclick="app.updateRiskLevel('aggressive')">激进型 — 关注高弹性事件</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js?v=20261009b"></script>
+</body>
+</html>

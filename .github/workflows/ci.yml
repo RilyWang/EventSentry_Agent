@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./code
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: ./code/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+        env:
+          NODE_ENV: production
+          DATABASE_URL: mysql://root:root@localhost:3306/eventsentry
+          APP_ID: test
+          APP_SECRET: test
+          KIMI_AUTH_URL: https://auth.kimi.com
+          KIMI_OPEN_URL: https://open.kimi.com
+
+  test-backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./code
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: eventsentry_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: ./code/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run database migrations
+        run: npm run db:push
+        env:
+          DATABASE_URL: mysql://root:root@localhost:3306/eventsentry_test
+
+      - name: Seed database
+        run: npm run db:seed
+        env:
+          DATABASE_URL: mysql://root:root@localhost:3306/eventsentry_test
+
+      - name: Run tests
+        run: npm test
+        env:
+          DATABASE_URL: mysql://root:root@localhost:3306/eventsentry_test
+          APP_ID: test
+          APP_SECRET: test

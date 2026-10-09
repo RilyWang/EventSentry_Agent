@@ -1,0 +1,50 @@
+# ─── Node ───
+node_modules/
+dist/
+*.tsbuildinfo
+.pnpm-store/
+
+# ─── Python ───
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ─── 环境变量（含密钥，禁止提交） ───
+.env
+.env.local
+.env.*.local
+*.env
+
+# ─── 日志 / 临时 ───
+*.log
+server.log
+analyst_run.log
+nohup.out
+_tmp*
+_temp*
+
+# ─── 编辑器 / 系统 ───
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# ─── 构建产物 ───
+build/
+coverage/
+.nyc_output/
+
+# ─── 内部 / 归档（不属于交付物） ───
+.zcode/
+archive/
+prompt-v2.md
+
+# ─── 说明 ───
+# 注意：server/db_data/*.db 会被提交 —— 它包含真实采集的事件数据，
+# 让仓库开箱即可运行。
+*.db-journal
+server/.env
