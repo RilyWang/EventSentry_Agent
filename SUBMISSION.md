@@ -45,11 +45,11 @@
 |------|------|------|
 | **源代码仓库** | ✅ **已完成** | **https://github.com/RilyWang/EventSentry_Agent**（214 文件） |
 | **README** | ✅ 已完成 | `README.md` 含：目标用户、核心设计、AI 角色、数据使用、已知边界与未做事项 |
-| **Web 产品 URL** | ✅ **已上线** | **https://victorian-jets-inner-constructed.trycloudflare.com** |
+| **Web 产品 URL** | ✅ **已上线** | **https://vegetable-assessment-shower-carey.trycloudflare.com** |
 
 ### 线上地址（Cloudflare Tunnel）
 
-**https://victorian-jets-inner-constructed.trycloudflare.com**
+**https://vegetable-assessment-shower-carey.trycloudflare.com**
 
 | 验证项 | 结果 |
 |--------|------|
