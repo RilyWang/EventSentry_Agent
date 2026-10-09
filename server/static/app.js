@@ -34,7 +34,6 @@ const app = {
       this.loadNotifications(),
       this.loadSubscriptions(),
       this.loadPreferences(),
-      this.loadAgentStatus(),
     ]);
     console.log('[App] Initialized');
   },
@@ -201,24 +200,64 @@ const app = {
   },
 
   bindFilters() {
-    // 影响方向筛选
-    document.getElementById('discover-filters').addEventListener('click', (e) => {
-      const btn = e.target.closest('.filter-btn');
-      if (!btn) return;
-      document.querySelectorAll('#discover-filters .filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      this.feedNature = btn.dataset.filter || '';
-      this.loadEvents();
-    });
-    // 事件状态筛选（展示 6 种状态）
-    document.getElementById('status-filters').addEventListener('click', (e) => {
-      const btn = e.target.closest('.status-btn');
-      if (!btn) return;
-      document.querySelectorAll('#status-filters .status-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      this.feedStatus = btn.dataset.status || '';
-      this.loadEvents();
-    });
+    // 通用：点一次选中，再点一次取消（回到「全部」）
+    const bindToggleGroup = (barId, btnClass, allValue, apply) => {
+      const bar = document.getElementById(barId);
+      if (!bar) return;
+      bar.addEventListener('click', (e) => {
+        const btn = e.target.closest('.' + btnClass);
+        if (!btn) return;
+        // 刷新 / 只看关注 有独立处理器，跳过
+        if (btn.id === 'feed-refresh' || btn.id === 'feed-followed') return;
+
+        const val = btn.dataset.filter !== undefined ? btn.dataset.filter
+                  : btn.dataset.status !== undefined ? btn.dataset.status
+                  : '';
+        const wasActive = btn.classList.contains('active');
+
+        // 仅清除本组的选项高亮；保留「只看关注」「刷新」等独立按钮的状态
+        bar.querySelectorAll(`.${btnClass}:not(#feed-followed):not(#feed-refresh)`)
+           .forEach(b => b.classList.remove('active'));
+
+        if (wasActive && val !== allValue) {
+          // 再点同一项 → 取消该条件，回到「全部」
+          const allBtn = bar.querySelector(`.${btnClass}[data-filter="${allValue}"]`)
+                      || bar.querySelector(`.${btnClass}[data-status="${allValue}"]`);
+          if (allBtn) allBtn.classList.add('active');
+          apply(allValue);
+        } else {
+          btn.classList.add('active');
+          apply(val);
+        }
+        this.loadEvents();
+      });
+    };
+
+    bindToggleGroup('discover-filters', 'filter-btn', '', (v) => { this.feedNature = v; });
+    bindToggleGroup('status-filters', 'status-btn', '', (v) => { this.feedStatus = v; });
+  },
+
+  // 刷新：清除**全部**筛选条件（方向 / 状态 / 只看关注 / 搜索词）后重载
+  async resetAllFilters() {
+    this.feedNature = '';
+    this.feedStatus = '';
+    this.feedFollowed = false;
+    this.feedSearch = '';
+
+    const searchEl = document.getElementById('discover-search');
+    if (searchEl) searchEl.value = '';
+
+    // 方向：全部 高亮
+    document.querySelectorAll('#discover-filters .filter-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('#discover-filters .filter-btn[data-filter=""]')?.classList.add('active');
+    // 状态：全部状态 高亮
+    document.querySelectorAll('#status-filters .status-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('#status-filters .status-btn[data-status=""]')?.classList.add('active');
+    // 只看关注：取消
+    document.getElementById('feed-followed')?.classList.remove('active');
+
+    await this.loadEvents();
+    this.toast('已重置全部筛选条件', '', 1700);
   },
 
   renderStatusCounts(counts) {
@@ -229,11 +268,13 @@ const app = {
   },
 
   bindRefresh() {
+    // 刷新 = 重置全部条件 + 重载
     document.getElementById('feed-refresh')?.addEventListener('click', async (e) => {
+      e.stopPropagation();
       const icon = e.currentTarget;
       icon.style.transform = 'rotate(360deg)';
       icon.style.transition = 'transform 0.6s';
-      await this.loadEvents();
+      await this.resetAllFilters();
       setTimeout(() => { icon.style.transform = 'rotate(0deg)'; icon.style.transition = 'none'; }, 600);
     });
     // 只看关注
