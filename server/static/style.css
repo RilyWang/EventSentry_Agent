@@ -73,15 +73,41 @@ body {
 .app-header {
   background: linear-gradient(135deg, var(--primary) 0%, #EF5350 100%);
   color: #fff;
-  padding: calc(12px + var(--safe-top)) 16px 30px;
+  padding: calc(10px + var(--safe-top)) 14px 10px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 10px;
   border-bottom: none;
   z-index: 10;
   flex-shrink: 0;
 }
-.app-header h1 { font-size: 17px; font-weight: 600; letter-spacing: 0.3px; color: #fff; }
+.app-header h1 { flex-shrink: 0; }
+
+/* 头部内搜索框：与标题同行，仅「发现」页显示 */
+.header-search {
+  display: none;
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.app-header[data-tab="discover"] .header-search { display: block; }
+.header-search input {
+  width: 100%;
+  padding: 8px 12px 8px 32px;
+  border: none; border-radius: 16px;
+  font-size: 12.5px;
+  background: rgba(255,255,255,0.95);
+  color: var(--text);
+  outline: none;
+}
+.header-search input::placeholder { color: var(--text-4); }
+.header-search .search-icon {
+  position: absolute; left: 11px; top: 50%; transform: translateY(-50%);
+  color: var(--text-3); pointer-events: none;
+  width: 14px; height: 14px;
+}
+.app-header h1 { font-size: 15.5px; font-weight: 600; letter-spacing: 0.3px; color: #fff; }
 .icon-btn {
   background: rgba(255,255,255,0.16);
   border: none; cursor: pointer; position: relative;
@@ -111,26 +137,7 @@ body {
 .tab-page.active { display: block; }
 .tab-page::-webkit-scrollbar { width: 0; }
 
-/* ─────────── 搜索（同花顺式：悬浮于红色头部下沿） ─────────── */
-#tab-discover .search-box {
-  margin: -24px 14px 0;
-  position: relative; z-index: 3;
-}
-.tab-page .search-box { margin: 12px 14px 0; position: relative; }
-.search-box input {
-  width: 100%; padding: 10px 14px 10px 38px;
-  border: none; border-radius: 20px;
-  font-size: 13px; background: rgba(255,255,255,0.96);
-  color: var(--text); outline: none;
-  box-shadow: var(--shadow-sm);
-}
-.search-box input::placeholder { color: var(--text-4); }
-.search-icon {
-  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
-  color: var(--text-3); pointer-events: none;
-}
-/* 搜索框若在白色背景区（如无渐变头）时的兜底 */
-.tab-page .search-box input { background: var(--card); }
+/* ─────────── 搜索框已移入 .app-header（见上） ─────────── */
 
 /* ─────────── 筛选栏（同花顺式分段） ─────────── */
 .filter-bar {

@@ -60,6 +60,8 @@ const app = {
     document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
     document.querySelector(`.nav-item[data-tab="${tab}"]`).classList.add('active');
     document.getElementById('page-title').textContent = { discover: '发现', advisor: '参谋', profile: '我的' }[tab];
+    // 头部搜索框仅在「发现」页显示
+    document.querySelector('.app-header').dataset.tab = tab;
   },
 
   // ─── Events Feed ───
