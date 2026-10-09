@@ -198,6 +198,18 @@ def init_db():
         )
     """)
 
+    # 标的订阅表（关注某只股票；添加持仓时自动写入）
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ticker_subscriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            ticker TEXT NOT NULL,
+            ticker_name TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, ticker)
+        )
+    """)
+
     # 用户偏好表
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_preferences (

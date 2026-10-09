@@ -74,9 +74,14 @@ def chat(req: ChatRequest):
 
 @app.get("/api/events")
 def list_events(nature: str = None, status: str = None, search: str = None,
-                limit: int = 50, offset: int = 0):
+                followed: bool = False, limit: int = 50, offset: int = 0):
     conn = get_db()
     cursor = conn.cursor()
+
+    # 已关注标的集合（用于标记 & 过滤）
+    cursor.execute("SELECT ticker FROM ticker_subscriptions WHERE user_id = 1")
+    followed_set = {r[0] for r in cursor.fetchall()}
+
     sql = "SELECT * FROM events WHERE 1=1"
     params = []
     if nature:
@@ -89,6 +94,9 @@ def list_events(nature: str = None, status: str = None, search: str = None,
         sql += " AND (ticker_name LIKE ? OR theme LIKE ? OR headline LIKE ? OR ticker LIKE ?)"
         like = f"%{search}%"
         params.extend([like, like, like, like])
+    if followed and followed_set:
+        sql += f" AND ticker IN ({','.join('?' * len(followed_set))})"
+        params.extend(sorted(followed_set))
     # 先统计过滤后的总数（用同一组筛选条件）
     count_sql = sql.replace("SELECT *", "SELECT COUNT(*)")
     cursor.execute(count_sql, params)
@@ -102,10 +110,18 @@ def list_events(nature: str = None, status: str = None, search: str = None,
     cursor.execute(sql, params + [limit, offset])
     rows = cursor.fetchall()
     conn.close()
+
+    items = []
+    for r in rows:
+        ev = row_to_event(dict(r))
+        ev["followed"] = ev["ticker"] in followed_set   # 该标的是否已关注
+        items.append(ev)
+
     return {
-        "items": [row_to_event(dict(r)) for r in rows],
+        "items": items,
         "total": total,
         "status_counts": status_counts,
+        "followed_tickers": sorted(followed_set),
     }
 
 
@@ -319,14 +335,51 @@ def get_holdings():
 
 @app.post("/api/holdings")
 def create_holding(body: dict):
+    """添加持仓 —— 同时自动「关注该标的」，后续该标的的新事件会进发现页"""
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO holdings (user_id, ticker, ticker_name, cost_price) VALUES (1, ?, ?, ?)",
-                   (body["ticker"], body["ticker_name"], body.get("cost_price")))
-    conn.commit()
+    ticker = body["ticker"]
+    ticker_name = body["ticker_name"]
+
+    cursor.execute(
+        "INSERT INTO holdings (user_id, ticker, ticker_name, cost_price) VALUES (1, ?, ?, ?)",
+        (ticker, ticker_name, body.get("cost_price")))
     new_id = cursor.lastrowid
+
+    # 自动关注该标的（幂等）
+    cursor.execute(
+        "INSERT OR IGNORE INTO ticker_subscriptions (user_id, ticker, ticker_name) VALUES (1, ?, ?)",
+        (ticker, ticker_name))
+    newly_followed = cursor.rowcount > 0
+
+    # 统计该标的当前有多少事件（用于提示语）
+    cursor.execute("SELECT COUNT(*) FROM events WHERE ticker = ?", (ticker,))
+    event_count = cursor.fetchone()[0]
+
+    conn.commit()
     conn.close()
-    return {"id": new_id, **body}
+    return {
+        "id": new_id,
+        "ticker": ticker,
+        "ticker_name": ticker_name,
+        "followed": True,
+        "newly_followed": newly_followed,
+        "event_count": event_count,
+    }
+
+
+@app.get("/api/tickers")
+def get_followed_tickers():
+    """已关注标的列表"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT ticker, ticker_name, created_at FROM ticker_subscriptions
+        WHERE user_id = 1 ORDER BY created_at DESC
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+    return {"items": [dict(r) for r in rows], "total": len(rows)}
 
 
 @app.delete("/api/holdings/{holding_id}")

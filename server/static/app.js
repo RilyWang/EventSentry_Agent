@@ -17,6 +17,8 @@ const app = {
   feedSearch: '',
   feedNature: '',
   feedStatus: '',
+  feedFollowed: false,
+  followedTickers: new Set(),
   chatHistory: [],
 
   async init() {
@@ -25,6 +27,7 @@ const app = {
     this.bindChat();
     this.bindFilters();
     this.bindRefresh();
+    await this.loadTickers();      // 先拿关注标的，卡片才能显示「已关注」
     await Promise.all([
       this.loadEvents(),
       this.loadHoldings(),
@@ -34,6 +37,24 @@ const app = {
       this.loadAgentStatus(),
     ]);
     console.log('[App] Initialized');
+  },
+
+  // ─── 轻提示 ───
+  toast(msg, type = '', ms = 2600) {
+    let box = document.getElementById('toast-box');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'toast-box';
+      document.body.appendChild(box);
+    }
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.textContent = msg;
+    box.appendChild(el);
+    setTimeout(() => {
+      el.classList.add('hide');
+      setTimeout(() => el.remove(), 320);
+    }, ms);
   },
 
   async api(path, options = {}) {
@@ -85,6 +106,7 @@ const app = {
       if (this.feedSearch) params.append('search', this.feedSearch);
       if (this.feedNature) params.append('nature', this.feedNature);
       if (this.feedStatus) params.append('status', this.feedStatus);
+      if (this.feedFollowed) params.append('followed', '1');
       params.append('limit', this.feedLimit);
       params.append('offset', this.feedOffset);
 
@@ -144,14 +166,17 @@ const app = {
       return `<div class="timeline-dot ${active}"></div>${line}`;
     }).join('');
 
+    const followed = (this.followedTickers && this.followedTickers.has(ev.ticker)) || ev.followed;
+
     return `
       <div class="event-card ${ev.nature}" data-id="${ev.id}">
         <div class="card-header">
           <div class="card-badges">
             <span class="badge ${nb.cls}">${nb.label}</span>
             <span class="badge ${statusBadge}">${ev.status}</span>
+            ${followed ? '<span class="followed-tag">★ 已关注</span>' : ''}
           </div>
-          <span style="font-size:11px;color:#9ca3af">${ev.updated_at || ''}</span>
+          <span style="font-size:11px;color:var(--text-3)">${ev.updated_at || ''}</span>
         </div>
         <div class="card-title">${ev.ticker_name} · ${ev.theme}</div>
         <div class="card-desc">${ev.headline}</div>
@@ -210,6 +235,16 @@ const app = {
       icon.style.transition = 'transform 0.6s';
       await this.loadEvents();
       setTimeout(() => { icon.style.transform = 'rotate(0deg)'; icon.style.transition = 'none'; }, 600);
+    });
+    // 只看关注
+    document.getElementById('feed-followed')?.addEventListener('click', (e) => {
+      const btn = e.currentTarget;
+      this.feedFollowed = !this.feedFollowed;
+      btn.classList.toggle('active', this.feedFollowed);
+      if (this.feedFollowed && this.followedTickers.size === 0) {
+        this.toast('还没有关注标的\n在「我的」添加持仓即可自动关注', 'warn', 3000);
+      }
+      this.loadEvents();
     });
     document.getElementById('fetch-new')?.addEventListener('click', () => this.fetchNewEvents());
     // 无限滚动：滚到底自动加载下一页
@@ -718,19 +753,43 @@ const app = {
   async addHolding() {
     const ticker = document.getElementById('holding-ticker').value.trim();
     const name = document.getElementById('holding-name').value.trim();
-    if (!ticker || !name) return alert('请填写完整信息');
+    if (!ticker || !name) return this.toast('请填写股票代码和名称', 'warn');
     try {
-      await this.api('/api/holdings', { method: 'POST', body: { ticker, ticker_name: name } });
+      const r = await this.api('/api/holdings', {
+        method: 'POST', body: { ticker, ticker_name: name },
+      });
       this.closeHoldingModal();
       document.getElementById('holding-ticker').value = '';
       document.getElementById('holding-name').value = '';
-      await this.loadHoldings();
-    } catch (err) { alert('添加失败: ' + err.message); }
+
+      // 成功提示：持仓 + 关注标的 + 该标的事件数
+      const n = r.event_count || 0;
+      this.toast(
+        `✓ 已添加持仓\n已关注「${r.ticker_name}」${n ? `，发现页有 ${n} 个该标的事件` : ''}`,
+        'success', 3200);
+
+      // 刷新持仓、关注列表、事件流（让「已关注」标记与计数同步）
+      await Promise.all([this.loadHoldings(), this.loadSubscribedEvents(), this.loadTickers()]);
+      await this.loadEvents();
+    } catch (err) { this.toast('添加失败：' + err.message, 'error'); }
   },
 
   async deleteHolding(id) {
-    try { await this.api(`/api/holdings/${id}`, { method: 'DELETE' }); await this.loadHoldings(); }
-    catch (err) { alert('删除失败: ' + err.message); }
+    try {
+      await this.api(`/api/holdings/${id}`, { method: 'DELETE' });
+      await this.loadHoldings();
+      this.toast('已移除持仓', '', 1800);
+    } catch (err) { this.toast('删除失败：' + err.message, 'error'); }
+  },
+
+  // 已关注标的列表（用于卡片角标与「只看关注」筛选）
+  async loadTickers() {
+    try {
+      const d = await this.api('/api/tickers');
+      this.followedTickers = new Set((d.items || []).map(x => x.ticker));
+      const tc = document.getElementById('sub-ticker-count');
+      if (tc) tc.textContent = d.total || 0;
+    } catch { this.followedTickers = new Set(); }
   },
 
   // ─── Preferences ───

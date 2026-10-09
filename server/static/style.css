@@ -537,6 +537,36 @@ body {
 .agent-badge { font-size: 10px; font-weight: 400; margin-left: 4px; color: var(--text-3); }
 .agent-model, .agent-role, .agent-sched { font-size: 11px; color: var(--text-3); margin-top: 2px; line-height: 1.5; }
 
+/* ─────────── 轻提示 Toast ─────────── */
+#toast-box {
+  position: fixed; left: 50%; top: 16%;
+  transform: translateX(-50%);
+  z-index: 999; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  width: max-content; max-width: 86vw;
+}
+.toast {
+  background: rgba(38,38,38,0.94); color: #fff;
+  padding: 11px 18px; border-radius: 10px;
+  font-size: 13px; line-height: 1.55; text-align: center;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.22);
+  animation: toastIn .24s ease;
+  white-space: pre-line;
+}
+.toast.success { background: rgba(0,168,112,0.95); }
+.toast.warn    { background: rgba(250,140,22,0.95); }
+.toast.error   { background: rgba(229,51,61,0.95); }
+@keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+.toast.hide { opacity: 0; transition: opacity .3s; }
+
+/* 事件卡上的「已关注」角标 */
+.followed-tag {
+  display: inline-flex; align-items: center; gap: 2px;
+  font-size: 10px; color: #F5A623;
+  border: 1px solid #F5A623; border-radius: 4px;
+  padding: 0 4px; line-height: 1.5;
+}
+
 /* ─────────── 数据来源引用卡 ─────────── */
 .citation-box {
   margin-top: 10px; padding: 11px;
