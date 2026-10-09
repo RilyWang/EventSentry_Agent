@@ -8,7 +8,7 @@ services:
     dockerfilePath: ./server/Dockerfile
     dockerContext: ./server
     plan: free
-    region: singapore          # 就近区域（香港/新加坡）
+    # region: singapore        # 如免费层不支持该区域，删掉本行用默认区域
     healthCheckPath: /api/ping
     autoDeploy: true
     envVars:
