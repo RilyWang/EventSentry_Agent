@@ -465,6 +465,15 @@ body {
 .v-deny    { background: var(--down-bg); color: var(--down); }
 .v-correct { background: var(--warn-bg); color: var(--warn); }
 .v-expire  { background: var(--flat-bg); color: var(--flat); }
+.v-revive  { background: #E6F7F1; color: #0E9F6E; }
+
+/* Agent 运行状态面板（我的 → Agent 运行状态） */
+.agent-status-box {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
 
 /* ─────────── 底部导航（同花顺式） ─────────── */
 .bottom-nav {

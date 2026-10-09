@@ -127,6 +127,29 @@ def sanitize(text: str) -> str:
     return out
 
 
+# ─── 「是否在给出建议」的判定 ───
+# 单纯命中红线词不足以判定违规：模型**拒绝**回答时也会复述"买入/目标价"等词
+# （例："我无法给出买入建议或目标价"）。盲目改写会把正当的拒答改成病句。
+# 因此只在"出现了红线词、且没有拒绝类表述"时，才认定为在给建议。
+REFUSAL_MARKERS = [
+    "无法", "不能", "不提供", "不建议", "不予", "不做", "拒绝",
+    "违反", "不构成", "非投资建议", "仅供参考", "不预测", "不设",
+]
+
+
+def asserts_advice(text: str) -> bool:
+    """
+    判断文本是否**在给出**投资建议（而非在拒绝给出建议）。
+    返回 True 表示需要改写；返回 False 表示只是提及/拒绝，无需改写。
+    """
+    t = text or ""
+    if not any(w in t for w in BLOCKING_WORDS):
+        return False
+    if any(m in t for m in REFUSAL_MARKERS):
+        return False
+    return True
+
+
 def has_disclaimer(text: str) -> bool:
     return any(k in (text or "") for k in DISCLAIMER_KEYWORDS)
 

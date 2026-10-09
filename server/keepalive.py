@@ -54,6 +54,10 @@ PROXIES = {"http": None, "https": None}
 # cloudflared 自身有重连退避，给足时间避免误杀。
 TUNNEL_IDLE_TOLERANCE = int(os.getenv("TUNNEL_IDLE_TOLERANCE", "6"))
 
+# 隧道"断线重连中"持续多久后才重启（默认 30 分钟）。
+# 重启会更换域名，因此只在长时间无法恢复（多为边缘 IP 失效）时才升级处理。
+DEGRADED_RESTART_AFTER = int(os.getenv("DEGRADED_RESTART_AFTER", "1800"))
+
 TUNNEL_URL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 
 
@@ -125,6 +129,49 @@ def registered_connection() -> bool:
         return "Registered tunnel connection" in txt
     except Exception:
         return False
+
+
+def connection_state() -> str:
+    """
+    解析 cloudflared 日志，判断**真实**连接状态。
+
+    为什么不能只看 metrics：断线重连期间 cloudflared_tunnel_ha_connections 会**滞后**，
+    仍显示 1，但日志里已经出现 "Connection terminated"，此时外部访问返回 Cloudflare 530。
+    日志比指标更早、更准，因此以日志为准。
+      返回 'up'（最近一次事件是注册成功）/ 'down'（最近一次是断连）/ 'unknown'
+    """
+    try:
+        txt = open(TUNNEL_LOG, encoding="utf-8", errors="ignore").read()
+    except Exception:
+        return "unknown"
+    if not txt:
+        return "unknown"
+    reg = txt.rfind("Registered tunnel connection")
+    lost = max(txt.rfind("Connection terminated"),
+               txt.rfind("Unable to establish connection"))
+    if reg == -1 and lost == -1:
+        return "unknown"
+    return "up" if reg > lost else "down"
+
+
+def edge_reachable() -> bool:
+    """
+    探测 Cloudflare 隧道边缘端口（7844）是否可达。
+    本机网络对 Cloudflare 边缘存在整段阻断时，这里会持续 False —— 说明断线是
+    **网络层**原因，重启 cloudflared 也无济于事（只会白白丢掉当前域名）。
+    """
+    import socket
+    for ip in ("198.41.192.77", "198.41.200.53"):
+        s = socket.socket()
+        s.settimeout(4)
+        try:
+            s.connect((ip, 7844))
+            return True
+        except Exception:
+            pass
+        finally:
+            s.close()
+    return False
 
 
 def save_url(url):
@@ -217,6 +264,7 @@ def main():
     fail_server = 0
     idle_tunnel = 0
     last_remote_state = None
+    _degraded_since = None
 
     while True:
         try:
@@ -236,36 +284,54 @@ def main():
                 time.sleep(CHECK_INTERVAL)
                 continue
 
-            # ② 隧道：只看本地信号
+            # ② 隧道：以「本地指标 + 日志」判定，公网探测仅作记录
             ha = tunnel_ha_connections()
             url = current_tunnel_url()
 
             if ha is None:
-                # 指标端口不可达 = 进程已死
+                # 指标端口不可达 = cloudflared 进程已死（指标服务独立于隧道连接）
                 idle_tunnel += 1
                 log(f"cloudflared 指标端口不可达（{idle_tunnel}/2）")
                 if idle_tunnel >= 2:
                     start_tunnel()
                     idle_tunnel = 0
-            elif ha >= 1:
+                time.sleep(CHECK_INTERVAL)
+                continue
+
+            healthy = (ha >= 1 and connection_state() == "up")
+
+            if healthy:
                 if idle_tunnel:
                     log("隧道已恢复 ✅")
                 idle_tunnel = 0
+                _degraded_since = None
                 if url:
                     save_url(url)
-                # 参考记录：本机能否访问公网地址（不参与判定）
                 ok = remote_reachable(url) if url else False
                 if ok != last_remote_state:
                     note = "本机可达" if ok else "本机不可达（网络阻断，不影响外部用户）"
                     status(f"公网探测: {note} | {url}")
                     last_remote_state = ok
             else:
-                # 进程活着但连接数为 0：cloudflared 正在自行重连，给足容忍时间
+                # 断线重连中。cloudflared 会自行退避重试，且**保留同一域名**，
+                # 因此默认不重启：重启只会换域名，对网络层阻断毫无帮助。
                 idle_tunnel += 1
-                log(f"隧道连接数 0（{idle_tunnel}/{TUNNEL_IDLE_TOLERANCE}），"
-                    f"等待 cloudflared 自动重连…")
-                if idle_tunnel >= TUNNEL_IDLE_TOLERANCE:
+                if _degraded_since is None:
+                    _degraded_since = time.time()
+                down_min = int((time.time() - _degraded_since) / 60)
+                edge_ok = edge_reachable()
+                edge = "边缘端口可达" if edge_ok else "边缘端口不可达（网络层阻断）"
+
+                if idle_tunnel == 1 or idle_tunnel % 10 == 0:
+                    status(f"⚠️ 隧道断线重连中（已 {down_min} 分钟，{edge}）"
+                           f"→ 域名保留 {url}，等待恢复")
+
+                # 升级条件：网络本身可达、但隧道长时间连不上（多为边缘 IP 失效）。
+                # 此时重启能换取新的边缘 IP —— 但会更换域名，故门槛很高（默认 30 分钟）。
+                if edge_ok and (time.time() - _degraded_since) > DEGRADED_RESTART_AFTER:
+                    status(f"⚠️ 隧道断线 {down_min} 分钟且边缘可达 → 重启并更换域名")
                     start_tunnel()
+                    _degraded_since = None
                     idle_tunnel = 0
         except KeyboardInterrupt:
             log("收到中断，退出")

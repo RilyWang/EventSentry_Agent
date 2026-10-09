@@ -1,0 +1,24 @@
+# 减小上传体积、加速构建
+.git
+.github
+node_modules
+**/node_modules
+archive
+dist
+**/dist
+.venv
+venv
+__pycache__
+**/__pycache__
+*.pyc
+*.log
+.zcode
+.vscode
+.idea
+server/.env
+code/
+docs/
+rules/
+.agent/
+*.md
+!server/README*.md

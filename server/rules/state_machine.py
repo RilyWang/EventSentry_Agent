@@ -51,7 +51,7 @@ TIER_WEIGHT = {"T0": 4, "T1": 3, "T2": 2, "T3": 1}
 class Evidence:
     """传入裁决的单个证据（由分析 Agent 从原始消息转换而来）"""
     tier: str                    # T0/T1/T2/T3
-    semantics: str               # confirm / deny / substance / neutral
+    semantics: str               # confirm / deny / substance / correct / neutral
     evidence_type: str = "fact"  # fact / opinion / speculation / rumor
     publish_time: str = ""
     source: str = ""
@@ -70,6 +70,7 @@ class TransitionResult:
     reason: str
     is_correction: bool = False      # 是否为"更正"（Rule 12 / Case 1）
     is_controversy: bool = False     # 官方否认但仍有 T3 传闻
+    is_revival: bool = False         # 过期事件被新证据重新激活（≠ 更正）
 
 
 def _days_since(date_str: str, now: datetime) -> int:
@@ -143,12 +144,26 @@ def arbitrate(
     if current_state == EXPIRED:
         t0 = latest_t0(evidence)
         if t0 and t0.semantics == "confirm":
-            return _r("Rule 3", OFFICIALLY_CONFIRMED, "过期事件出现新 T0 确认，重新激活", True, is_correction=True)
+            return _r("Rule 3", OFFICIALLY_CONFIRMED, "过期事件出现新 T0 确认，重新激活",
+                      True, is_revival=True)
         if t0 and t0.semantics == "deny":
             return _r("Rule 6", OFFICIALLY_DENIED, "过期事件出现新 T0 否认", True)
         if count_by(evidence, "T1") >= 2:
-            return _r("Rule 2", MEDIA_VERIFIED, "过期事件出现 ≥2 条 T1，重新激活", True)
+            return _r("Rule 2", MEDIA_VERIFIED, "过期事件出现 ≥2 条 T1，重新激活",
+                      True, is_revival=True)
         return _no_change(current_state, "过期事件新增 T3/T2，不改变状态")
+
+    # ═══ Rule 12：更正公告推翻既有结论 ═══
+    # 「更正」与「否认」不同：官方不是全盘否定，而是修正此前口径，结论随之改写。
+    # 只有「更正公告 / 补充更正」这类明确措辞才判定为更正（"修订《公司章程》"属常规事项，不算）。
+    # 单条 T0 更正在监管语境下即为决定性证据，故不要求 ≥2 条 T1 前置条件。
+    # 已在确认/落地态时不重复触发，保证重跑幂等。
+    correction_t0 = next((e for e in evidence
+                          if e.tier == "T0" and e.semantics == "correct"), None)
+    if correction_t0 and current_state not in (OFFICIALLY_CONFIRMED, SUBSTANCE_LANDED):
+        return _r("Rule 12", OFFICIALLY_CONFIRMED,
+                  f"出现 T0 更正公告（{correction_t0.summary[:40]}），推翻既有口径",
+                  True, is_correction=True)
 
     # ═══ Rule 9/10/12：官方确认 / 官否 的特殊跃迁 ═══
     if current_state == OFFICIALLY_CONFIRMED:
@@ -220,13 +235,13 @@ def check_expiry(current_state: Optional[str], last_evidence_at: str,
     return None
 
 
-def _r(rule_id, code, reason, changed, is_correction=False) -> TransitionResult:
+def _r(rule_id, code, reason, changed, is_correction=False, is_revival=False) -> TransitionResult:
     meta = STATE_META[code]
     return TransitionResult(
         state_code=code, state_label=meta["label"], card_tag=meta["card_tag"],
         color=meta["color"], rule_id=rule_id, changed=changed,
         notification_level=NOTIFICATION_LEVEL.get(code), reason=reason,
-        is_correction=is_correction,
+        is_correction=is_correction, is_revival=is_revival,
     )
 
 
@@ -252,6 +267,8 @@ if __name__ == "__main__":
         ("媒体→否认",   MEDIA_VERIFIED, [Evidence("T0", "deny")]),
         ("确认→落地",   OFFICIALLY_CONFIRMED, [Evidence("T0", "substance")]),
         ("否认被推翻",  OFFICIALLY_DENIED, [Evidence("T0", "confirm"), Evidence("T1", "neutral"), Evidence("T1", "neutral")]),
+        ("T0更正公告",  UNVERIFIED_RUMOR, [Evidence("T0", "correct")]),
+        ("过期后复活",  EXPIRED, [Evidence("T0", "confirm")]),
     ]
     for name, cur, ev in cases:
         r = arbitrate(cur, ev, last_evidence_at=datetime.now().strftime("%Y-%m-%d"))

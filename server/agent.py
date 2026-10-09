@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 
 from ifind_client import IfindClient, IfindError, parse_ifind_records
 from llm_client import LLMClient, LLMError
+from rules import compliance
 
 # ─── System Prompt（源自 docs/05-skills/Agent.md 的人格设定） ───
 SYSTEM_PROMPT = """你是 EventSentry（事件参谋），一位严谨的投资事件情报分析师。
@@ -256,8 +257,20 @@ class EventSentryAgent:
                 seen.add(key)
                 unique_citations.append(c)
 
+        # ── 合规兜底：对话输出同样必须过红线扫描（PRD §5.1）──
+        # "参谋"最容易越界产生投资建议，因此这里对最终答案做确定性扫描。
+        # 注意只在**确实在给建议**时改写；模型正当拒答时会复述"买入/目标价"等词，
+        # 那种情况下改写反而破坏可读性。
+        comp = compliance.check_text(final_text)
+        answer = final_text
+        if compliance.asserts_advice(answer):
+            answer = compliance.sanitize(answer)
+            if not compliance.has_disclaimer(answer):
+                answer += "\n\n（以上仅为公开信息整理，不构成任何投资建议。）"
+
         return {
-            "answer": final_text,
+            "answer": answer,
+            "compliance": comp.to_dict(),
             "citations": unique_citations,
             "tools_used": tools_used,
             "iterations": iterations,

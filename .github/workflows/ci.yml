@@ -1,5 +1,9 @@
 name: CI
 
+# 只跑「离线确定性」自检：状态机 13 条规则、证据权重、冲突检测、合规边界。
+# 这些用例不依赖 LLM / iFinD / 外网，因此可在 CI 中稳定复现。
+# 接口层与异常用例（需要服务在运行）在本地用 `python selftest.py` 全量执行。
+
 on:
   push:
     branches: [main, develop]
@@ -7,87 +11,22 @@ on:
     branches: [main]
 
 jobs:
-  build-and-test:
+  selftest:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./code
+        working-directory: ./server
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: ./code/package-lock.json
+          python-version: "3.12"
 
       - name: Install dependencies
-        run: npm ci
+        run: pip install -r requirements.txt
 
-      - name: Type check
-        run: npm run check
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Build
-        run: npm run build
-        env:
-          NODE_ENV: production
-          DATABASE_URL: mysql://root:root@localhost:3306/eventsentry
-          APP_ID: test
-          APP_SECRET: test
-          KIMI_AUTH_URL: https://auth.kimi.com
-          KIMI_OPEN_URL: https://open.kimi.com
-
-  test-backend:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./code
-
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: eventsentry_test
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=3
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: ./code/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run database migrations
-        run: npm run db:push
-        env:
-          DATABASE_URL: mysql://root:root@localhost:3306/eventsentry_test
-
-      - name: Seed database
-        run: npm run db:seed
-        env:
-          DATABASE_URL: mysql://root:root@localhost:3306/eventsentry_test
-
-      - name: Run tests
-        run: npm test
-        env:
-          DATABASE_URL: mysql://root:root@localhost:3306/eventsentry_test
-          APP_ID: test
-          APP_SECRET: test
+      - name: Run offline rule self-test
+        run: python selftest.py --rules

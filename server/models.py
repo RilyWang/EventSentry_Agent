@@ -273,13 +273,69 @@ def init_db():
     _ensure_column(cursor, "events", "confidence", "TEXT")
     _ensure_column(cursor, "events", "confidence_reason", "TEXT")
     _ensure_column(cursor, "events", "last_evidence_at", "TEXT")
+    # v2.3：确定性证据分析结果（权重 / 冲突 / 合规标注），供卡片与时间线展示
+    _ensure_column(cursor, "events", "weight_avg", "REAL")
+    _ensure_column(cursor, "events", "has_conflict", "INTEGER DEFAULT 0")
+    _ensure_column(cursor, "events", "compliance_note", "TEXT")
     _ensure_column(cursor, "evidence_items", "evidence_type", "TEXT")
     _ensure_column(cursor, "evidence_items", "raw_message_id", "INTEGER")
     _ensure_column(cursor, "event_versions", "notification_level", "TEXT")
     _ensure_column(cursor, "event_versions", "rule_fired", "TEXT")
 
+    backfill_derived_data(conn)
+
     conn.commit()
     conn.close()
+
+
+def backfill_derived_data(conn):
+    """
+    确定性派生数据的自举 / 补全（幂等，可反复执行）。
+
+    这些数字全部来自 rules/evidence_analysis.py 的系数表，任何一项都能人工复算，
+    因此启动时补齐是安全的，也让「数据库」与「规则代码」始终保持一致：
+      1) evidence_items.credibility_score 为空 → 按 (tier, 类型) 补齐
+      2) events.weight_avg / has_conflict   → 依据该事件全部证据复算
+      3) event_directions                   → 依据证据复算（含「证据冲突」方向）
+
+    注：仅在缺失时才回填，不会覆盖分析 Agent 已写入的更新结果。
+    """
+    try:
+        from rules import evidence_analysis as ea
+    except Exception:
+        return
+
+    cur = conn.cursor()
+
+    # ① 证据权重
+    for r in cur.execute("""SELECT id, tier, evidence_type FROM evidence_items
+                            WHERE credibility_score IS NULL""").fetchall():
+        cur.execute("UPDATE evidence_items SET credibility_score=? WHERE id=?",
+                    (ea.evidence_weight(r["tier"], r["evidence_type"]), r["id"]))
+
+    # ② 事件级分析结果 + ③ 演化方向（只补没有的，避免覆盖新结果）
+    missing = cur.execute("""SELECT e.event_id FROM events e
+                             WHERE e.weight_avg IS NULL
+                                OR NOT EXISTS (SELECT 1 FROM event_directions d
+                                               WHERE d.event_id = e.event_id)""").fetchall()
+    for r in missing:
+        eid = r["event_id"]
+        ev_rows = [dict(x) for x in cur.execute(
+            """SELECT tier, evidence_type, summary, source, date, credibility_score
+               FROM evidence_items WHERE event_id = ?""", (eid,)).fetchall()]
+        if not ev_rows:
+            continue
+        info = ea.analyze_event(ev_rows)
+        cur.execute("UPDATE events SET weight_avg=?, has_conflict=? WHERE event_id=?",
+                    (info["avg_weight"], 1 if info["conflict"] else 0, eid))
+        cur.execute("DELETE FROM event_directions WHERE event_id=?", (eid,))
+        for d in info["directions"]:
+            cur.execute("""INSERT INTO event_directions
+                           (event_id, label, description, probability, supporting, risk)
+                           VALUES (?, ?, ?, ?, ?, ?)""",
+                        (eid, d["label"], d["description"], d["probability"],
+                         json.dumps(d["supporting"], ensure_ascii=False), d["risk"]))
+    conn.commit()
 
 def seed_events():
     """插入种子数据（仅首次）"""

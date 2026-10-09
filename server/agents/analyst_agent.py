@@ -22,6 +22,12 @@ from llm_client import LLMClient
 from models import get_db, init_db
 from rules import state_machine as sm
 from rules import compliance
+from rules import evidence_analysis as ea
+
+# 「更正公告」的确定性识别（LLM 漏判时的兜底，也用于状态机 Rule 12）。
+# 只认明确措辞：更正公告 / 更正说明 / 补充更正 / 更正并致歉。
+# 刻意不匹配「修订《公司章程》」——那是常规治理事项，不是对既有结论的更正。
+CORRECTION_PAT = re.compile(r"(更正公告|更正说明|补充更正|更正并致歉)")
 
 
 def _extract_json(text: str):
@@ -66,10 +72,12 @@ ANALYZE_SYSTEM = f"""你是投资事件情报分析员。你的任务是从原�
   * 券商研报、分析师观点 → opinion
   * "可能""预计""有望"等推断 → speculation
   * 股吧、传言、匿名爆料、无来源的说法 → rumor
-- semantics: 对事件状态的作用，取值 confirm(确认) / deny(否认) / substance(实质落地) / neutral(中性补充)
+- semantics: 对事件状态的作用，取值 confirm(确认) / deny(否认) / substance(实质落地) / correct(更正) / neutral(中性补充)
   * 公司公告披露 → confirm
   * 明确否认/澄清"不存在" → deny
   * 合同签署、产品上线、业绩兑现等实质结果 → substance
+  * **明确写有"更正公告""补充更正"的公告（修正此前已披露口径）→ correct**
+    （注意：仅"修订《公司章程》"不属于更正，应归为 neutral）
   * 其他补充信息 → neutral
 - tier: 来源层级 T0(公司公告/监管) / T1(权威媒体) / T2(研报) / T3(传闻)
 - event_time: 消息中提到的"事件实际发生日期"(YYYY-MM-DD)，没有则 null
@@ -206,6 +214,11 @@ class AnalystAgent:
         for a in analyzed:
             asg = next((x for x in assignments if x.get("id") == a["id"]), None)
             if not asg:
+                # LLM 漏项时**不能静默丢弃**：这些消息随后会被整体标记 processed=1，
+                # 丢弃即永久丢失且不可重试。兜底按主题新建事件，保证"零丢失"。
+                theme = a.get("theme") or "公司动态"
+                a["_new_theme"] = theme
+                groups.setdefault(self._make_event_id(ticker, theme), []).append(a)
                 continue
             claimed = asg.get("event_id")
             if asg.get("assign") == "existing" and claimed in valid_ids:
@@ -327,10 +340,12 @@ class AnalystAgent:
                 continue
             cur.execute("""
                 INSERT INTO evidence_items
-                (event_id, source, date, summary, tier, evidence_type, source_url, raw_message_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (event_id, source, date, summary, tier, evidence_type, credibility_score,
+                 source_url, raw_message_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (eid, a["source"], a["publish_time"], a["title"][:200],
                   a["tier"], a["evidence_type"],
+                  ea.evidence_weight(a["tier"], a["evidence_type"]),
                   a.get("source_url") or "#", a["id"]))
 
         # ── 时间线节点 ──
@@ -359,42 +374,86 @@ class AnalystAgent:
                 "confidence_reason": existing.get("confidence_reason"),
                 "directions": self._safe_json(existing.get("directions"), []),
             }
+        # ── 确定性证据分析（权重 / 冲突 / 演化方向）—— 对事件全量证据复算 ──
+        cur.execute("""SELECT tier, evidence_type, summary, source, date, credibility_score
+                       FROM evidence_items WHERE event_id = ?""", (eid,))
+        analysis = ea.analyze_event([dict(r) for r in cur.fetchall()])
+
+        # ── 合规扫描（PRD §5.1）：把真实 T3 传闻传进去，
+        #     未标注「未证实」会命中 blocking 规则；红线词会被改写后才落库 ──
+        rumors = [{
+            "content": a["title"][:120], "credibility": "低",
+            "note": "未证实：T3 来源，无权威渠道背书",
+        } for a in items
+            if (a["tier"] or "").upper() == "T3" or a["evidence_type"] == "rumor"]
         comp = compliance.check_event_payload({
             "headline": card.get("headline", ""),
             "risk_note": card.get("risk_note", ""),
-            "directions": card.get("directions", []),
-            "rumors": [],
+            "directions": analysis["directions"],
+            "rumors": rumors,
         })
+        compliance_note = "" if comp.passed else "；".join(
+            f"[{i.level}] {i.message}" for i in comp.issues)
+
+        # 合规层生效：红线词强制改写；未证实传闻必须在标题显著标注
+        headline = compliance.sanitize(card.get("headline") or items[0]["title"][:120])
+        if tr.state_code == sm.UNVERIFIED_RUMOR and "未证实" not in headline:
+            headline = f"【未证实·传闻】{headline}"
+
+        # ── 四类时间（语义严格区分，每次摄入都刷新）──
+        #   event_time       事件发生时间：证据中最早的出现时刻，一旦确定不再回退
+        #   disclosure_time  披露时间    ：最新来源对外披露的时刻（单调递增）
+        #   crawl_time       抓取时间    ：本次系统抓取入库的日期
+        #   updated_at       更新时间    ：本次结论重算的时刻
+        today = datetime.now().strftime("%Y-%m-%d")
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+        first_time = min((a.get("event_time") or a["publish_time"] or "" for a in items), default="")
+        event_time = (existing or {}).get("event_time") or first_time
+        disclosure_time = max(batch_last, (existing or {}).get("disclosure_time") or "")
+        nature = card.get("nature") or (existing or {}).get("nature") or "neutral"
+        directions_json = json.dumps(analysis["directions"], ensure_ascii=False)
 
         # ── 落库：新建或更新事件 ──
-        headline = card.get("headline") or (items[0]["title"][:120])
         if existing is None:
             cur.execute("""
                 INSERT INTO events
                 (event_id, ticker, ticker_name, theme, headline, status, state_code, state_label,
                  nature, nature_label, event_time, disclosure_time, crawl_time, updated_at,
                  last_evidence_at, notification_level, risk_note, confidence, confidence_reason,
-                 timeline, evidence, directions, rumors)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', '{}', ?, '[]')
+                 weight_avg, has_conflict, compliance_note, timeline, evidence, directions, rumors)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', '{}', ?, '[]')
             """, (eid, ticker, ticker_name, theme, headline, tr.card_tag, tr.state_code, tr.state_label,
-                  card.get("nature", "neutral"), self._nature_label(card.get("nature")),
-                  min((a.get("event_time") or a["publish_time"] or "" for a in items), default=""),
-                  last_at, datetime.now().strftime("%Y-%m-%d"), last_at,
+                  nature, self._nature_label(nature),
+                  event_time, disclosure_time, today, now_str,
                   last_at, tr.notification_level, card.get("risk_note"), card.get("confidence"),
                   card.get("confidence_reason"),
-                  json.dumps(card.get("directions", []), ensure_ascii=False)))
-            cur.execute("UPDATE events SET directions = ? WHERE event_id = ?",
-                        (json.dumps(card.get("directions", []), ensure_ascii=False), eid))
+                  analysis["avg_weight"], 1 if analysis["conflict"] else 0, compliance_note,
+                  directions_json))
         else:
             cur.execute("""
                 UPDATE events SET headline=?, status=?, state_code=?, state_label=?, nature=?,
-                  nature_label=?, updated_at=?, last_evidence_at=?, notification_level=?,
-                  risk_note=?, confidence=?, confidence_reason=?
+                  nature_label=?, event_time=?, disclosure_time=?, crawl_time=?, updated_at=?,
+                  last_evidence_at=?, notification_level=?, risk_note=?, confidence=?,
+                  confidence_reason=?, weight_avg=?, has_conflict=?, compliance_note=?,
+                  directions=?
                 WHERE event_id=?
             """, (headline, tr.card_tag, tr.state_code, tr.state_label,
-                  card.get("nature", existing.get("nature")), self._nature_label(card.get("nature")),
-                  last_at, last_at, tr.notification_level, card.get("risk_note"),
-                  card.get("confidence"), card.get("confidence_reason"), eid))
+                  nature, self._nature_label(nature),
+                  event_time, disclosure_time, today, now_str,
+                  last_at, tr.notification_level, card.get("risk_note"),
+                  card.get("confidence"), card.get("confidence_reason"),
+                  analysis["avg_weight"], 1 if analysis["conflict"] else 0, compliance_note,
+                  directions_json, eid))
+
+        # ── 演化方向 / 证据冲突 落表（供「其他说法」面板与 /directions 接口）──
+        cur.execute("DELETE FROM event_directions WHERE event_id = ?", (eid,))
+        for d in analysis["directions"]:
+            cur.execute("""
+                INSERT INTO event_directions
+                (event_id, label, description, probability, supporting, risk)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (eid, d["label"], d["description"], d["probability"],
+                  json.dumps(d["supporting"], ensure_ascii=False), d["risk"]))
 
         # ── 版本快照 ──
         # 依据文档：每次**状态跃迁**记录一个版本；新建事件记录初始版本。
@@ -409,7 +468,7 @@ class AnalystAgent:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'analyst', ?, ?)
             """, (eid, ver, tr.state_label, card.get("nature", "neutral"), headline,
                   json.dumps([{"title": a["title"], "tier": a["tier"]} for a in items], ensure_ascii=False),
-                  "{}", json.dumps(card.get("directions", []), ensure_ascii=False),
+                  "{}", directions_json,
                   self._change_type(tr), f"[{tr.rule_id}] {tr.reason}",
                   tr.notification_level, tr.rule_id))
 
@@ -480,12 +539,21 @@ class AnalystAgent:
         if not subs:
             return   # 无人关心该事件 → 不产生通知
         for uid in subs:
+            title = f"[{tr.notification_level}] {tr.state_label}"
+            content = f"{tr.card_tag}：{tr.reason}"
+            # 幂等：同一用户 + 同一事件 + 同一文案只推一次，
+            # 避免重跑流水线或"分析 Agent / 通知同步"双写产生重复通知。
+            cur.execute("""
+                SELECT 1 FROM notifications
+                WHERE user_id = ? AND event_id = ? AND title = ? AND content = ?
+                LIMIT 1
+            """, (uid, eid, title, content))
+            if cur.fetchone():
+                continue
             cur.execute("""
                 INSERT INTO notifications (user_id, event_id, type, title, content)
                 VALUES (?, ?, ?, ?, ?)
-            """, (uid, eid, self._notif_type(tr),
-                  f"[{tr.notification_level}] {tr.state_label}",
-                  f"{tr.card_tag}：{tr.reason}"))
+            """, (uid, eid, self._notif_type(tr), title, content))
 
     # ═══ 规则兜底小函数（LLM 失败时用） ═══
     @staticmethod
@@ -509,6 +577,8 @@ class AnalystAgent:
     @staticmethod
     def _rule_semantics(title):
         t = title or ""
+        if CORRECTION_PAT.search(t):
+            return "correct"
         if any(w in t for w in ["澄清", "否认", "不存在", "不实"]):
             return "deny"
         if any(w in t for w in ["进展", "完成", "签署", "上线", "中标", "落地"]):
@@ -534,6 +604,8 @@ class AnalystAgent:
             return "deny"
         if tr.state_code == sm.EXPIRED:
             return "expire"
+        if tr.is_revival:
+            return "revive"
         return "update"
 
     @staticmethod

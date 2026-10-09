@@ -82,8 +82,8 @@ const app = {
     document.getElementById('page-title').textContent = { discover: '发现', advisor: '参谋', profile: '我的' }[tab];
     // 头部搜索框仅在「发现」页显示
     document.querySelector('.app-header').dataset.tab = tab;
-    // 切到「我的」页时刷新关注列表
-    if (tab === 'profile') this.loadSubscribedEvents();
+    // 切到「我的」页时刷新关注列表与 Agent 运行状态
+    if (tab === 'profile') { this.loadSubscribedEvents(); this.loadAgentStatus(); }
   },
 
   // ─── Events Feed ───
@@ -390,18 +390,27 @@ const app = {
     evidence.forEach(e => counts[e.tier] = (counts[e.tier] || 0) + 1);
     const total = evidence.length || 1;
 
+    // 证据类型构成 + 综合权重（权重来自后端确定性规则表，前端只做展示）
+    const typeCounts = {};
+    evidence.forEach(e => { const t = e.evidence_type || 'unclassified'; typeCounts[t] = (typeCounts[t] || 0) + 1; });
+    const ws = evidence.map(e => e.credibility_score).filter(v => v !== null && v !== undefined);
+    const avgW = ws.length ? ws.reduce((a, b) => a + b, 0) / ws.length : 0;
+    const weightShown = (ev.weight_avg !== null && ev.weight_avg !== undefined) ? ev.weight_avg : Number(avgW.toFixed(3));
+    const weightText = avgW >= 0.85 ? '强' : avgW >= 0.60 ? '较强' : avgW >= 0.35 ? '中等' : avgW >= 0.15 ? '较弱' : '弱';
+
     const sourceAnnotation = `
       <div style="margin:10px 0;padding:8px 12px;background:#f0f9ff;border-radius:8px;font-size:11px;color:#0369a1">
-        <strong>数据来源：</strong>iFinD/同花顺 MCP（公告+新闻语义检索）
-        ｜ 抓取时间：${ev.crawl_time || '-'} ｜ 披露时间：${ev.disclosure_time || '-'} ｜ 事件时间：${ev.event_time || '-'}
+        <strong>四类时间：</strong>
+        事件发生 ${ev.event_time || '-'} ｜ 披露 ${ev.disclosure_time || '-'} ｜ 抓取 ${ev.crawl_time || '-'} ｜ 更新 ${ev.updated_at || '-'}
+        <div style="margin-top:4px">数据来源：iFinD/同花顺 MCP（公告）· Serper 检索（媒体/研报/传闻），层级与权重由确定性规则表判定</div>
       </div>`;
 
     const versionHTML = versions.length ? `
       <div style="margin:12px 0">
         <div style="font-size:12px;color:#6b7280;margin-bottom:6px">版本演化</div>
         ${versions.map((v, i) => {
-          const cls = { update: 'v-update', deny: 'v-deny', correct: 'v-correct', expire: 'v-expire' }[v.change_type] || 'v-update';
-          const label = { update: '更新', deny: '否认', correct: '更正', expire: '过期' }[v.change_type] || '更新';
+          const cls = { update: 'v-update', deny: 'v-deny', correct: 'v-correct', expire: 'v-expire', revive: 'v-revive' }[v.change_type] || 'v-update';
+          const label = { update: '更新', deny: '否认', correct: '更正', expire: '过期', revive: '复活' }[v.change_type] || '更新';
           return `<div class="version-item ${i === 0 ? 'current' : ''}">
             <span class="version-type ${cls}">${label}</span>
             <span style="font-size:11px;color:#6b7280">v${v.version}</span>
@@ -426,6 +435,9 @@ const app = {
 
     const tierLabels = { T0: '官方披露(公告)', T1: '权威媒体', T2: '研报观点', T3: '市场传闻' };
     const tierColors = { T0: '#10b981', T1: '#3b82f6', T2: '#f59e0b', T3: '#9ca3af' };
+    // 证据类型（事实/观点/推测/传闻）—— 需求要求明确区分并给出权重
+    const typeLabels = { fact: '事实', opinion: '观点', speculation: '推测', rumor: '传闻' };
+    const typeColors = { fact: '#059669', opinion: '#2563eb', speculation: '#d97706', rumor: '#9ca3af' };
     const byTier = { T0: [], T1: [], T2: [], T3: [] };
     evidence.forEach(e => { if (byTier[e.tier]) byTier[e.tier].push(e); });
 
@@ -434,8 +446,13 @@ const app = {
         <div style="font-size:12px;font-weight:600;color:${tierColors[tier]};margin-bottom:4px">${tierLabels[tier]} (${items.length})</div>
         ${items.map(item => `
           <div style="padding:8px;background:#f9fafb;border-radius:6px;margin-bottom:4px">
-            <div style="display:flex;justify-content:space-between;font-size:12px">
-              <strong>${item.source}</strong><span style="color:#9ca3af">${item.date}</span>
+            <div style="display:flex;justify-content:space-between;font-size:12px;align-items:center;gap:6px">
+              <strong>${item.source}</strong>
+              <span style="display:flex;gap:6px;align-items:center;white-space:nowrap">
+                <span style="color:${typeColors[item.evidence_type] || '#6b7280'};border:1px solid currentColor;border-radius:4px;padding:0 4px;font-size:10px">${typeLabels[item.evidence_type] || '未分类'}</span>
+                <span style="color:#6b7280;font-size:11px">权重 ${item.credibility_score !== null && item.credibility_score !== undefined ? item.credibility_score : '-'}</span>
+                <span style="color:#9ca3af">${item.date}</span>
+              </span>
             </div>
             <div style="font-size:12px;color:#4b5563;margin-top:2px">${item.summary}</div>
           </div>`).join('')}
@@ -448,26 +465,32 @@ const app = {
           <strong style="font-size:14px">${d.label}</strong>
         </div>
         <div style="font-size:12px;color:#4b5563;margin-bottom:6px">${d.description}</div>
-        <div style="font-size:11px;color:#6b7280">依据: ${(d.supporting || []).join('、')}</div>
+        <div style="font-size:11px;color:#6b7280">依据: ${(d.supporting || []).map(s => typeof s === 'string' ? s : `${s.source || ''}${s.date ? ' · ' + s.date : ''}${s.title ? '：' + s.title : ''}`).join('；')}</div>
         <div style="font-size:11px;color:#6b7280">风险: ${d.risk}</div>
       </div>`).join('')
       : '<div style="color:#9ca3af;font-size:13px">暂无演化方向。可在「参谋」中提问，由 Agent 基于最新证据推演。</div>';
 
     return `
       <div style="background:${nb.bg};padding:16px;border-radius:12px;margin-bottom:16px">
-        <div style="display:flex;gap:8px;margin-bottom:8px">
+        <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
           <span class="badge" style="background:white;color:${nb.color}">${nb.label}</span>
           <span class="badge badge-gray">${ev.status}</span>
+          ${ev.notification_level ? `<span class="badge badge-gray">通知 ${ev.notification_level}</span>` : ''}
+          ${ev.has_conflict ? '<span class="badge" style="background:#fef3c7;color:#b45309">证据存在冲突</span>' : ''}
         </div>
         <h2 style="font-size:18px;margin-bottom:4px">${ev.ticker_name} · ${ev.theme}</h2>
         <p style="font-size:14px;color:#4b5563">${ev.headline}</p>
+        ${ev.risk_note ? `<p style="font-size:12px;color:#b45309;margin-top:6px">风险提示：${ev.risk_note}</p>` : ''}
         <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:12px;color:#9ca3af">
-          <span>${ev.ticker}</span><span>更新 ${ev.updated_at}</span>
+          <span>${ev.ticker}${ev.state_code ? ' · ' + ev.state_code : ''}</span><span>更新 ${ev.updated_at}</span>
         </div>
       </div>
       ${sourceAnnotation}
       <div style="margin:12px 0">
-        <div style="font-size:12px;color:#6b7280;margin-bottom:6px">证据权重</div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+          <div style="font-size:12px;color:#6b7280">证据构成（按来源层级）</div>
+          <div style="font-size:12px;color:#374151">综合权重 <strong style="color:#111827">${weightShown}</strong> · ${weightText}</div>
+        </div>
         <div class="evidence-bar">
           <div class="evidence-segment e-t0" style="width:${(counts.T0 / total) * 100}%"></div>
           <div class="evidence-segment e-t1" style="width:${(counts.T1 / total) * 100}%"></div>
@@ -479,6 +502,10 @@ const app = {
           <span style="color:#3b82f6">● 媒体 ${counts.T1}</span>
           <span style="color:#f59e0b">● 研报 ${counts.T2}</span>
           <span style="color:#9ca3af">● 传闻 ${counts.T3}</span>
+        </div>
+        <div style="margin-top:6px;font-size:11px;color:#6b7280">
+          类型：事实 ${typeCounts.fact || 0} · 观点 ${typeCounts.opinion || 0} · 推测 ${typeCounts.speculation || 0} · 传闻 ${typeCounts.rumor || 0}
+          <span style="color:#9ca3af">｜ 权重 = 层级基础权重 × 类型系数（确定性系数表，可人工复算）</span>
         </div>
       </div>
       ${versionHTML}

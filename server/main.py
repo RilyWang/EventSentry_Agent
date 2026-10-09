@@ -547,10 +547,24 @@ def row_to_event(row: dict) -> dict:
         "status": row["status"],
         "nature": row["nature"],
         "nature_label": row["nature_label"],
-        "event_time": row.get("event_time"),
-        "disclosure_time": row.get("disclosure_time"),
-        "crawl_time": row.get("crawl_time"),
-        "updated_at": row["updated_at"],
+        # 状态机结构化字段（可追溯：状态码 + 通知级别）
+        "state_code": row.get("state_code"),
+        "state_label": row.get("state_label"),
+        "notification_level": row.get("notification_level"),
+        # 四类时间（语义不同，勿混用）
+        "event_time": row.get("event_time"),            # 事件发生时间
+        "disclosure_time": row.get("disclosure_time"),  # 披露时间
+        "crawl_time": row.get("crawl_time"),            # 抓取时间
+        "updated_at": row["updated_at"],                # 更新时间
+        "last_evidence_at": row.get("last_evidence_at"),
+        "expires_at": row.get("expires_at"),
+        # 确定性证据分析结果（可复算、可追溯）
+        "weight_avg": row.get("weight_avg"),
+        "has_conflict": bool(row.get("has_conflict")),
+        "confidence": row.get("confidence"),
+        "confidence_reason": row.get("confidence_reason"),
+        "risk_note": row.get("risk_note"),
+        "compliance_note": row.get("compliance_note"),
         "timeline": _safe_json(row.get("timeline"), []),
         "evidence": _safe_json(row.get("evidence"), {}),
         "directions": _safe_json(row.get("directions"), []),

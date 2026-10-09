@@ -1,83 +1,30 @@
 version: "3.8"
 
-services:
-  # ─── MySQL 数据库 ───
-  db:
-    image: mysql:8.0
-    container_name: eventsentry-db
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
-      MYSQL_DATABASE: ${DB_NAME:-eventsentry}
-      MYSQL_USER: ${DB_USER:-eventsentry}
-      MYSQL_PASSWORD: ${DB_PASSWORD:-eventsentry}
-    ports:
-      - "3306:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-      - ./code/db/migrations:/docker-entrypoint-initdb.d
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+# 本地一键起服务（数据库为 SQLite 文件，无需额外容器）。
+# 线上部署见：render.yaml / fly.toml / railway.json（或 docs/09-deploy/PAAS_DEPLOY.md）。
 
-  # ─── 后端 API ───
+services:
   api:
     build:
-      context: ./code
+      context: ./server
       dockerfile: Dockerfile
     container_name: eventsentry-api
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
-      NODE_ENV: production
       PORT: 3000
-      DATABASE_URL: mysql://${DB_USER:-eventsentry}:${DB_PASSWORD:-eventsentry}@db:3306/${DB_NAME:-eventsentry}
-      APP_ID: ${APP_ID}
-      APP_SECRET: ${APP_SECRET}
-      KIMI_AUTH_URL: ${KIMI_AUTH_URL}
-      KIMI_OPEN_URL: ${KIMI_OPEN_URL}
-      IFIND_API_KEY: ${IFIND_API_KEY}
-      FUYAO_API_KEY: ${FUYAO_API_KEY}
-    depends_on:
-      db:
-        condition: service_healthy
+      DB_PATH: /data/eventsentry.db
+      ENABLE_SCHEDULER: "1"
+    # 密钥不要写进 compose 文件：把 server/.env 挂载进去即可
     volumes:
-      - ./code/scripts:/app/scripts
-
-  # ─── Collector Agent（定时任务） ───
-  collector:
-    build:
-      context: ./code
-      dockerfile: Dockerfile
-    container_name: eventsentry-collector
-    restart: unless-stopped
-    command: ["node", "--experimental-strip-types", "task-runner/collector.ts"]
-    environment:
-      DATABASE_URL: mysql://${DB_USER:-eventsentry}:${DB_PASSWORD:-eventsentry}@db:3306/${DB_NAME:-eventsentry}
-      IFIND_API_KEY: ${IFIND_API_KEY}
-    depends_on:
-      - db
-      - api
-    # 每 5 分钟执行一次
-    # 生产环境建议使用 cron 或专用调度器
-
-  # ─── Analyst Agent ───
-  analyst:
-    build:
-      context: ./code
-      dockerfile: Dockerfile
-    container_name: eventsentry-analyst
-    restart: unless-stopped
-    command: ["node", "--experimental-strip-types", "task-runner/analyst.ts"]
-    environment:
-      DATABASE_URL: mysql://${DB_USER:-eventsentry}:${DB_PASSWORD:-eventsentry}@db:3306/${DB_NAME:-eventsentry}
-      FUYAO_API_KEY: ${FUYAO_API_KEY}
-    depends_on:
-      - db
-      - api
+      - ./server/.env:/app/.env:ro
+      - eventsentry_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:3000/api/ping')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
 volumes:
-  mysql_data:
+  eventsentry_data:
