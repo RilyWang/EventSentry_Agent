@@ -45,11 +45,11 @@
 |------|------|------|
 | **源代码仓库** | ✅ **已完成** | **https://github.com/RilyWang/EventSentry_Agent**（214 文件） |
 | **README** | ✅ 已完成 | `README.md` 含：目标用户、核心设计、AI 角色、数据使用、已知边界与未做事项 |
-| **Web 产品 URL** | ✅ **已上线** | **https://cooperation-sen-significance-lover.trycloudflare.com** |
+| **Web 产品 URL** | ✅ **已上线** | **https://jam-zoloft-samba-empty.trycloudflare.com** |
 
 ### 线上地址（Cloudflare Tunnel）
 
-**https://cooperation-sen-significance-lover.trycloudflare.com**
+**https://jam-zoloft-samba-empty.trycloudflare.com**
 
 | 验证项 | 结果 |
 |--------|------|

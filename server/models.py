@@ -3,7 +3,10 @@ import json
 import os
 from datetime import datetime
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "db_data", "eventsentry.db")
+DB_PATH = os.getenv(
+    "DB_PATH",
+    os.path.join(os.path.dirname(__file__), "db_data", "eventsentry.db")
+)
 
 def get_db():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
