@@ -48,3 +48,4 @@ prompt-v2.md
 # 让仓库开箱即可运行。
 *.db-journal
 server/.env
+server/tunnel_url.txt
