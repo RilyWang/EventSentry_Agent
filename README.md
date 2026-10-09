@@ -245,6 +245,24 @@ python main.py
 
 ---
 
+## 📦 提交材料
+
+> **需求核验报告 + 提交清单见 [`SUBMISSION.md`](SUBMISSION.md)**
+
+| 提交物 | 位置 |
+|--------|------|
+| 需求核验（逐条对照题目） | [`SUBMISSION.md`](SUBMISSION.md) |
+| **AI 使用与验证记录** | [`docs/10-submission/AI_USAGE_LOG.md`](docs/10-submission/AI_USAGE_LOG.md) |
+| **测试报告（实测）** | [`docs/08-test-reports/TEST_REPORT.md`](docs/08-test-reports/TEST_REPORT.md) |
+| **演示视频分镜脚本** | [`docs/10-submission/DEMO_VIDEO_SCRIPT.md`](docs/10-submission/DEMO_VIDEO_SCRIPT.md) |
+| 测试计划 | [`docs/06-testcase/TEST_PLAN.md`](docs/06-testcase/TEST_PLAN.md) |
+| 迭代记录（含全部缺陷） | [`docs/00-process/process.md`](docs/00-process/process.md) |
+| 部署文档 | [`docs/09-deploy/DEPLOY.md`](docs/09-deploy/DEPLOY.md) |
+
+**⚠️ 尚需你完成**：① 推送到 GitHub ② 部署公网 URL ③ 录制演示视频（脚本已备好）
+
+---
+
 ## 文档索引
 
 | 文档 | 路径 |
