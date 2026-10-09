@@ -62,6 +62,8 @@ const app = {
     document.getElementById('page-title').textContent = { discover: '发现', advisor: '参谋', profile: '我的' }[tab];
     // 头部搜索框仅在「发现」页显示
     document.querySelector('.app-header').dataset.tab = tab;
+    // 切到「我的」页时刷新关注列表
+    if (tab === 'profile') this.loadSubscribedEvents();
   },
 
   // ─── Events Feed ───
@@ -442,6 +444,74 @@ const app = {
   async loadSubscriptions() {
     try { this.subscriptions = await this.api('/api/subscriptions'); }
     catch { this.subscriptions = []; }
+    await this.loadSubscribedEvents();
+  },
+
+  // 「我的」页：关注事件列表 + 计数
+  async loadSubscribedEvents() {
+    const list = document.getElementById('subscribed-list');
+    if (!list) return;
+    try {
+      const d = await this.api('/api/subscriptions/events');
+      const items = d.items || [];
+
+      // 计数
+      const ec = document.getElementById('sub-event-count');
+      const tc = document.getElementById('sub-ticker-count');
+      if (ec) ec.textContent = d.total || 0;
+      if (tc) tc.textContent = d.ticker_count || 0;
+      const hint = document.getElementById('subscribed-hint');
+      if (hint) hint.textContent = items.length
+        ? `共 ${items.length} 个 · 状态跃迁时通知你`
+        : '订阅事件后，状态跃迁将通知你';
+
+      if (!items.length) {
+        list.innerHTML = '<div class="empty-state">暂无关注事件<br><span style="font-size:11px">在事件详情页点右上角 ☆ 即可订阅</span></div>';
+        return;
+      }
+
+      const statusCls = {
+        '官方确认': 'badge-st-confirmed', '媒体验证': 'badge-st-media',
+        '未证实传闻': 'badge-st-rumor', '官方否认': 'badge-st-denied',
+        '实质落地': 'badge-st-landed', '已过期': 'badge-st-expired',
+      };
+      list.innerHTML = items.map(ev => `
+        <div class="sub-item" data-id="${ev.id}">
+          <div class="sub-item-main" onclick="app.openSubscribed('${ev.id}')">
+            <div class="sub-item-title">${ev.ticker_name} · ${ev.theme}</div>
+            <div class="sub-item-meta">
+              <span class="badge ${statusCls[ev.status] || 'badge-st-rumor'}">${ev.status}</span>
+              <span class="badge ${ev.nature === 'positive' ? 'badge-up' : ev.nature === 'negative' ? 'badge-down' : 'badge-gray'}">${ev.nature_label}</span>
+              <span class="sub-item-date">${ev.updated_at || ''}</span>
+            </div>
+          </div>
+          <button class="sub-item-del" title="取消关注" onclick="event.stopPropagation();app.unsubFromProfile('${ev.id}')">★</button>
+        </div>`).join('');
+    } catch (e) {
+      console.error('loadSubscribedEvents', e);
+    }
+  },
+
+  // 「我的」页点击某关注事件 → 打开详情（先确保事件已加载）
+  async openSubscribed(eventId) {
+    let ev = this.events.find(e => e.id === eventId);
+    if (!ev) {
+      try {
+        const d = await this.api(`/api/events/${encodeURIComponent(eventId)}`);
+        if (d && d.id) { ev = d; this.events.unshift(ev); }
+      } catch (e) { /* ignore */ }
+    }
+    if (ev) { this.selectedEvent = ev; await this.openEventDetail(eventId); }
+  },
+
+  // 「我的」页取消关注
+  async unsubFromProfile(eventId) {
+    await this.toggleSubscribe(eventId);
+    await this.loadSubscribedEvents();
+  },
+
+  scrollToSubscribed() {
+    document.getElementById('subscribed-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   },
 
   // 右上角星号：未订阅 ☆ 灰，已订阅 ★ 黄
@@ -475,6 +545,8 @@ const app = {
       if (btn) btn.textContent = nowSub ? '✓ 已订阅' : '☆ 订阅此事件';
       // 同步右上角星号
       if (this.selectedEvent && this.selectedEvent.id === eventId) this.updateBookmark(nowSub);
+      // 同步「我的」页的关注列表与计数
+      await this.loadSubscribedEvents();
     } catch (err) { alert('操作失败: ' + err.message); }
   },
 

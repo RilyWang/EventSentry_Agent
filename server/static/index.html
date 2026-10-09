@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>EventSentry 事件参谋</title>
-  <link rel="stylesheet" href="/style.css?v=20261009f">
+  <link rel="stylesheet" href="/style.css?v=20261009g">
 </head>
 <body>
   <div id="app">
@@ -88,10 +88,23 @@
           </div>
         </div>
         <div class="profile-menu">
-          <div class="menu-item"><span>关注事件</span><span>0</span></div>
-          <div class="menu-item"><span>关注股票</span><span>0</span></div>
+          <div class="menu-item" onclick="app.scrollToSubscribed()" style="cursor:pointer">
+            <span>关注事件</span><span id="sub-event-count">0</span>
+          </div>
+          <div class="menu-item"><span>关注股票</span><span id="sub-ticker-count">0</span></div>
           <div class="menu-item"><span>消息通知</span><span class="text-gray">已开启</span></div>
           <div class="menu-item" onclick="app.showSettings()" style="cursor:pointer"><span>风险偏好</span><span class="text-gray" id="risk-level-display">稳健型</span></div>
+        </div>
+
+        <!-- 我的关注（订阅的事件） -->
+        <div class="profile-section" id="subscribed-section">
+          <div class="section-header">
+            <h4>我的关注</h4>
+            <span class="text-gray" id="subscribed-hint">订阅事件后，状态跃迁将通知你</span>
+          </div>
+          <div id="subscribed-list" class="subscribed-list">
+            <div class="empty-state">暂无关注事件<br><span style="font-size:11px">在事件详情页点右上角 ☆ 即可订阅</span></div>
+          </div>
         </div>
         <div class="profile-section">
           <div class="section-header">
@@ -188,6 +201,6 @@
     </div>
   </div>
 
-  <script src="/app.js?v=20261009f"></script>
+  <script src="/app.js?v=20261009g"></script>
 </body>
 </html>

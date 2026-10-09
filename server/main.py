@@ -351,6 +351,33 @@ def get_subscriptions():
     return [r["event_id"] for r in rows]
 
 
+@app.get("/api/subscriptions/events")
+def get_subscribed_events():
+    """返回已订阅事件的完整信息 + 关注股票数（供「我的」页展示）"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT e.* FROM events e
+        JOIN event_subscriptions s ON s.event_id = e.event_id
+        WHERE s.user_id = 1
+        ORDER BY e.updated_at DESC
+    """)
+    rows = cursor.fetchall()
+    items = [row_to_event(dict(r)) for r in rows]
+
+    # 关注股票 = 订阅事件涉及的**去重标的** ∪ 自选持仓标的
+    tickers = {e["ticker"] for e in items}
+    cursor.execute("SELECT DISTINCT ticker FROM holdings WHERE user_id = 1")
+    tickers |= {r[0] for r in cursor.fetchall()}
+
+    conn.close()
+    return {
+        "items": items,
+        "total": len(items),
+        "ticker_count": len(tickers),
+    }
+
+
 @app.post("/api/subscriptions")
 def subscribe_event(body: dict):
     conn = get_db()
