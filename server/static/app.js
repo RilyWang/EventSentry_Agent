@@ -285,6 +285,8 @@ const app = {
     document.getElementById('modal-body').innerHTML =
       this.detailHTML(ev, timeline, evidence, directions, versions, isSubscribed);
     document.getElementById('event-modal').classList.add('active');
+    // 右上角星号同步订阅状态
+    this.updateBookmark(isSubscribed);
 
     document.querySelectorAll('.detail-tab').forEach(tab => {
       tab.addEventListener('click', () => {
@@ -442,6 +444,21 @@ const app = {
     catch { this.subscriptions = []; }
   },
 
+  // 右上角星号：未订阅 ☆ 灰，已订阅 ★ 黄
+  updateBookmark(isSub) {
+    const b = document.getElementById('detail-bookmark');
+    if (!b) return;
+    b.textContent = isSub ? '★' : '☆';
+    b.classList.toggle('subscribed', !!isSub);
+    b.title = isSub ? '已订阅，点击取消' : '订阅此事件';
+  },
+
+  // 点击右上角星号 → 切换订阅
+  toggleBookmark() {
+    if (!this.selectedEvent) return;
+    this.toggleSubscribe(this.selectedEvent.id);
+  },
+
   async toggleSubscribe(eventId) {
     const isSub = this.subscriptions.includes(eventId);
     try {
@@ -452,8 +469,12 @@ const app = {
         await this.api('/api/subscriptions', { method: 'POST', body: { event_id: eventId } });
         this.subscriptions.push(eventId);
       }
+      const nowSub = this.subscriptions.includes(eventId);
+      // 同步底部按钮
       const btn = document.getElementById('detail-subscribe-btn');
-      if (btn) btn.textContent = this.subscriptions.includes(eventId) ? '✓ 已订阅' : '☆ 订阅此事件';
+      if (btn) btn.textContent = nowSub ? '✓ 已订阅' : '☆ 订阅此事件';
+      // 同步右上角星号
+      if (this.selectedEvent && this.selectedEvent.id === eventId) this.updateBookmark(nowSub);
     } catch (err) { alert('操作失败: ' + err.message); }
   },
 

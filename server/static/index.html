@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>EventSentry 事件参谋</title>
-  <link rel="stylesheet" href="/style.css?v=20261009e">
+  <link rel="stylesheet" href="/style.css?v=20261009f">
 </head>
 <body>
   <div id="app">
@@ -121,11 +121,11 @@
 
     <!-- Bottom Nav -->
     <nav class="bottom-nav">
-      <button class="nav-item" data-tab="discover">
+      <button class="nav-item active" data-tab="discover">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48 2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48 2.83-2.83"/></svg>
         <span>发现</span>
       </button>
-      <button class="nav-item active" data-tab="advisor">
+      <button class="nav-item" data-tab="advisor">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         <span>参谋</span>
       </button>
@@ -141,7 +141,7 @@
         <div class="modal-header">
           <button class="back-btn" onclick="app.closeModal()">←</button>
           <h3>事件详情</h3>
-          <button class="bookmark-btn" onclick="app.toggleBookmark()">☆</button>
+          <button id="detail-bookmark" class="bookmark-btn" title="订阅此事件" onclick="app.toggleBookmark()">☆</button>
         </div>
         <div class="modal-body" id="modal-body">
           <!-- 动态填充 -->
@@ -188,6 +188,6 @@
     </div>
   </div>
 
-  <script src="/app.js?v=20261009e"></script>
+  <script src="/app.js?v=20261009f"></script>
 </body>
 </html>

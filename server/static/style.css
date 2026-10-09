@@ -352,8 +352,14 @@ body {
 .modal-header h3 { font-size: 16px; font-weight: 600; color: var(--text); }
 .back-btn, .bookmark-btn {
   background: none; border: none; cursor: pointer; padding: 4px;
-  font-size: 18px; color: var(--primary); line-height: 1;
+  font-size: 18px; color: var(--text-3); line-height: 1;
+  transition: color .18s, transform .12s;
 }
+.back-btn { color: var(--primary); }
+.bookmark-btn { font-size: 21px; }
+.bookmark-btn:active { transform: scale(0.88); }
+/* 已订阅：★ 变黄 */
+.bookmark-btn.subscribed { color: #F5A623; }
 .modal-body {
   flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
   padding: 14px 16px calc(24px + var(--safe-bottom));
