@@ -43,9 +43,26 @@
 
 | 子项 | 状态 | 说明 |
 |------|------|------|
-| **源代码仓库** | ✅ 已完成 | 已 `git init` 并提交（209 文件，commit `26374c0`）。**待你推送到 GitHub**（见第三节） |
+| **源代码仓库** | ✅ **已完成** | **https://github.com/RilyWang/EventSentry_Agent**（214 文件） |
 | **README** | ✅ 已完成 | `README.md` 含：目标用户、核心设计、AI 角色、数据使用、已知边界与未做事项 |
-| **Web 产品 URL** | ⚠️ **需你操作** | 本地运行正常（`http://localhost:3000`），**但公网 URL 需部署**。见第三节 |
+| **Web 产品 URL** | ✅ **已上线** | **https://watson-wanting-dream-examinations.trycloudflare.com** |
+
+### 线上地址（Cloudflare Tunnel）
+
+**https://watson-wanting-dream-examinations.trycloudflare.com**
+
+| 验证项 | 结果 |
+|--------|------|
+| 首页 / 样式 / 脚本 | ✅ HTTP 200 |
+| API（事件/Agent/通知/订阅/偏好） | ✅ HTTP 200 |
+| 事件总数 | **118** |
+| 状态覆盖 | **6/6**（官方确认 68 · 未证实传闻 29 · 实质落地 6 · 已过期 6 · 官方否认 5 · 媒体验证 4） |
+| 与本地数据一致性 | ✅ 一致 |
+
+⚠️ **注意**：这是 Cloudflare **无账号快速隧道**（`trycloudflare.com`），
+- ✅ 无需账号、即时可用
+- ⚠️ **无可用性保证，进程停止即失效**
+- 长期稳定需使用**具名隧道**或**云服务器 + 域名**（见第三节）
 
 ---
 
